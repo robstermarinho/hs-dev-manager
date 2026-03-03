@@ -1,0 +1,18 @@
+{
+  "name": "hubspot-dev-manager",
+  "version": "0.1.0",
+  "description": "Interactive CLI tool for managing multiple HubSpot portals with ease",
+  "main": "index.js",
+  "type": "commonjs",
+  "exports": "./index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node -e \"const { helloWorld } = require('./index'); if (helloWorld() !== 'Hello, world!') { throw new Error('Unexpected output'); } console.log(helloWorld());\""
+  },
+  "keywords": [
+    "hello-world",
+    "npm-package"
+  ],
+  "author": "",
+  "license": "MIT"
+}
