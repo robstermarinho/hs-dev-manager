@@ -29,7 +29,7 @@ export async function checkHsCli(): Promise<HsCliStatus> {
 
 export function hsInstallHint(status: HsCliStatus): string {
   if (!status.installed) {
-    return "HubSpot CLI não encontrado. Instale com: npm install -g @hubspot/cli";
+    return "HubSpot CLI not found. Install it with: npm install -g @hubspot/cli";
   }
-  return `HubSpot CLI ${status.version ?? "?"} não suportado. Este tool requer v${MIN_HS_MAJOR}+. Atualize com: npm install -g @hubspot/cli@latest`;
+  return `HubSpot CLI ${status.version ?? "?"} is not supported. This tool requires v${MIN_HS_MAJOR}+. Update with: npm install -g @hubspot/cli@latest`;
 }

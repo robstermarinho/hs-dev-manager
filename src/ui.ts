@@ -8,7 +8,7 @@ export function fail(message: string): never {
 
 export function handleCancel<T>(value: T | symbol): T {
   if (p.isCancel(value)) {
-    p.cancel("Até mais!");
+    p.cancel("Bye!");
     process.exit(0);
   }
   return value;
