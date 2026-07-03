@@ -1,6 +1,8 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
+import { deployAction } from "./actions/deploy.js";
 import { configurePathAction, fetchAction } from "./actions/fetch.js";
+import { historyAction } from "./actions/history.js";
 import { watchAction } from "./actions/watch.js";
 import { discoverAccounts, type HsAccount } from "./hs/accounts.js";
 import { checkHsCli, hsInstallHint } from "./hs/version.js";
@@ -80,7 +82,13 @@ export async function runApp(): Promise<void> {
         await fetchAction(portal);
         break;
       case "watch":
-        await watchAction(portal);
+        await watchAction(portal, process.cwd(), deployAction);
+        break;
+      case "deploy":
+        await deployAction(portal);
+        break;
+      case "history":
+        await historyAction(portal);
         break;
       case "portal":
         portal = await selectPortal(discovered.accounts);
