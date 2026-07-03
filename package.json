@@ -2,17 +2,46 @@
   "name": "hubspot-dev-manager",
   "version": "0.1.0",
   "description": "Interactive CLI tool for managing multiple HubSpot portals with ease",
-  "main": "index.js",
-  "type": "commonjs",
-  "exports": "./index.js",
+  "type": "module",
+  "bin": {
+    "hs-dev-manager": "./dist/cli.js",
+    "hsdm": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "node index.js",
-    "test": "node -e \"const { helloWorld } = require('./index'); if (helloWorld() !== 'Hello, world!') { throw new Error('Unexpected output'); } console.log(helloWorld());\""
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "hello-world",
-    "npm-package"
+    "hubspot",
+    "cli",
+    "cms",
+    "design-manager",
+    "portal"
   ],
-  "author": "",
-  "license": "MIT"
+  "author": "Robert Marinho",
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "execa": "^9.5.2",
+    "js-yaml": "^4.1.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.13.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
 }
