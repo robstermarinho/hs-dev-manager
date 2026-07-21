@@ -4,7 +4,8 @@ export type WatchEvent =
   | { type: "uploaded"; localPath: string; remotePath: string }
   | { type: "deleted"; remotePath: string }
   | { type: "preview"; url: string }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "raw"; message: string };
 
 const ANSI = /\x1b\[[0-9;]*m/g;
 
@@ -39,5 +40,5 @@ export function parseWatchLine(rawLine: string): WatchEvent | undefined {
     return { type: "error", message: line };
   }
 
-  return undefined;
+  return { type: "raw", message: line };
 }

@@ -51,6 +51,9 @@ export function applyEvent(stats: WatchStats, event: WatchEvent, root?: string):
       return undefined;
     case "ready":
       return `${time} ${pc.cyan("●")} watching ${pc.dim(event.dir)}`;
+    case "raw":
+      // Unrecognized hs output: keep it visible but understated.
+      return `${time} ${pc.dim(event.message)}`;
   }
 }
 

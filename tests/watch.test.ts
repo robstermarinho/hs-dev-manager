@@ -33,9 +33,9 @@ describe("parseWatchLine", () => {
     });
   });
 
-  it("ignores unrelated noise", () => {
+  it("passes unrecognized lines through as raw and drops empties", () => {
     expect(parseWatchLine("")).toBeUndefined();
-    expect(parseWatchLine("Some unrelated log")).toBeUndefined();
+    expect(parseWatchLine("Some unrelated log")).toEqual({ type: "raw", message: "Some unrelated log" });
   });
 
   it("strips ANSI before matching", () => {

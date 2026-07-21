@@ -4,7 +4,7 @@ import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { streamHs } from "../hs/runner.js";
 import { stripAnsi } from "../hs/watch-parser.js";
-import { commitScoped, isGitRepo } from "../git.js";
+import { changedFiles, commitScoped, isGitRepo } from "../git.js";
 import { designManagerUrl, localDirFor, portalScope } from "../paths.js";
 import { loadFetchLog, recordFetch, saveFetchLog } from "../state/fetch-log.js";
 import {
@@ -103,6 +103,20 @@ export async function fetchAction(account: HsAccount, cwd: string = process.cwd(
     return;
   }
 
+  // Fetch overwrites local files, so require a clean tree in the portal scope:
+  // uncommitted work would be lost and the post-fetch sync commit would swallow it.
+  const inRepo = await isGitRepo(cwd);
+  const scope = portalScope(account);
+  if (inRepo) {
+    const dirty = await changedFiles(cwd, scope);
+    if (dirty.length > 0) {
+      p.log.error(`Uncommitted changes in ${scope} — commit or deploy them before fetching:`);
+      for (const file of dirty.slice(0, 10)) p.log.message(dim(`  ${file}`));
+      if (dirty.length > 10) p.log.message(dim(`  … and ${dirty.length - 10} more`));
+      return;
+    }
+  }
+
   const ALL = "__all__";
   const BACK = "__back__";
   const choice = handleCancel(
@@ -131,5 +145,20 @@ export async function fetchAction(account: HsAccount, cwd: string = process.cwd(
     p.log.success(`${targets.length} path(s) updated`);
   } else {
     p.log.warn(`${failures} of ${targets.length} path(s) failed`);
+  }
+
+  // Tree was clean before the fetch, so anything changed now came from HubSpot.
+  if (inRepo) {
+    const synced = await changedFiles(cwd, scope);
+    if (synced.length === 0) {
+      p.log.info(dim("Local already up to date — nothing to sync."));
+      return;
+    }
+    const message = `chore(hubspot): sync ${targets.join(", ")} from ${account.name}`;
+    if (await commitScoped(cwd, scope, message)) {
+      p.log.success(`Sync commit created: ${synced.length} file(s)`);
+    } else {
+      p.log.warn("Sync commit failed — check git status.");
+    }
   }
 }

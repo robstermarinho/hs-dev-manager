@@ -10,6 +10,7 @@ import { offerHsUpgrade } from "./actions/upgrade.js";
 import { watchAction } from "./actions/watch.js";
 import { discoverAccounts, portalKey, type AccountsResult, type HsAccount } from "./hs/accounts.js";
 import { checkHsCli, hsInstallHint } from "./hs/version.js";
+import { loadLastPortalId, saveLastPortalId } from "./state/last-portal.js";
 import { loadPathsConfig, portalPaths } from "./state/paths-config.js";
 import { accent, dim, fail, handleCancel, renderTree } from "./ui.js";
 
@@ -22,11 +23,16 @@ type MenuAction =
   | "deploy"
   | "history"
   | "remove"
+  | "list"
   | "portal"
   | "helper"
   | "exit";
 
-export async function selectPortal(accounts: HsAccount[]): Promise<HsAccount | typeof ADD_PORTAL> {
+export async function selectPortal(
+  accounts: HsAccount[],
+  lastPortalId?: string
+): Promise<HsAccount | typeof ADD_PORTAL> {
+  const last = lastPortalId ? accounts.find((a) => a.accountId === lastPortalId) : undefined;
   const selected = handleCancel(
     await p.select<HsAccount | typeof ADD_PORTAL>({
       message: "Select a portal",
@@ -34,11 +40,16 @@ export async function selectPortal(accounts: HsAccount[]): Promise<HsAccount | t
         ...accounts.map((account) => ({
           value: account,
           label: account.name,
-          hint: account.isDefault ? `${account.accountId} · default` : account.accountId,
+          hint:
+            account === last
+              ? `${account.accountId} · last used`
+              : account.isDefault
+                ? `${account.accountId} · default`
+                : account.accountId,
         })),
         { value: ADD_PORTAL, label: "+ Add portal", hint: "authenticate a new HubSpot account" },
       ],
-      initialValue: accounts.find((a) => a.isDefault) ?? accounts[0],
+      initialValue: last ?? accounts.find((a) => a.isDefault) ?? accounts[0],
     })
   );
   return selected;
@@ -47,12 +58,17 @@ export async function selectPortal(accounts: HsAccount[]): Promise<HsAccount | t
 /**
  * Prompt for a portal, handling the inline "Add portal" choice by running the
  * auth flow and re-selecting. Mutates the passed discovery result in place when
- * new accounts appear so the caller keeps an up-to-date list.
+ * new accounts appear so the caller keeps an up-to-date list. Persists the
+ * chosen portal to .hsaccount (same file the sh version used).
  */
 async function pickPortal(discovered: AccountsResult): Promise<HsAccount> {
+  const lastPortalId = await loadLastPortalId();
   while (true) {
-    const selected = await selectPortal(discovered.accounts);
-    if (selected !== ADD_PORTAL) return selected;
+    const selected = await selectPortal(discovered.accounts, lastPortalId);
+    if (selected !== ADD_PORTAL) {
+      await saveLastPortalId(selected);
+      return selected;
+    }
 
     const refreshed = await addPortalAction();
     if (refreshed) {
@@ -62,8 +78,8 @@ async function pickPortal(discovered: AccountsResult): Promise<HsAccount> {
   }
 }
 
-/** Show the current portal's saved paths as a tree above the menu. */
-async function showPortalPaths(portal: HsAccount, cwd: string = process.cwd()): Promise<void> {
+/** Menu action: show the current portal's saved paths as a tree. */
+async function listPathsAction(portal: HsAccount, cwd: string = process.cwd()): Promise<void> {
   const config = await loadPathsConfig(cwd);
   const paths = portalPaths(config, portalKey(portal));
   p.note(renderTree(paths), `Saved paths · ${accent(portal.name)}`);
@@ -77,6 +93,7 @@ async function mainMenu(portal: HsAccount): Promise<MenuAction> {
         // Paths
         { value: "configure" as const, label: "Configure new path", hint: "download a remote path from HubSpot" },
         { value: "remove" as const, label: "Remove saved path", hint: "unregister a path, optionally delete local files" },
+        { value: "list" as const, label: "List saved paths", hint: "show saved paths for this portal" },
         // Sync & deploy
         { value: "fetch" as const, label: "Fetch / update local", hint: "re-download with --overwrite" },
         { value: "watch" as const, label: "Watch", hint: "auto-sync on save" },
@@ -114,7 +131,6 @@ export async function runApp(): Promise<void> {
   let portal = await pickPortal(discovered);
 
   while (true) {
-    await showPortalPaths(portal);
     const action = await mainMenu(portal);
 
     switch (action) {
@@ -135,6 +151,9 @@ export async function runApp(): Promise<void> {
         break;
       case "remove":
         await removePathAction(portal);
+        break;
+      case "list":
+        await listPathsAction(portal);
         break;
       case "helper":
         await helperAction();
