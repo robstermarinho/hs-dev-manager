@@ -8,8 +8,10 @@ import { streamHs } from "../hs/runner.js";
 import { parseWatchLine } from "../hs/watch-parser.js";
 import { changedFiles, isGitRepo } from "../git.js";
 import { localDirFor, portalScope } from "../paths.js";
+import { lastFetch, loadFetchLog, timeAgo } from "../state/fetch-log.js";
 import { loadPathsConfig, portalPaths } from "../state/paths-config.js";
 import { dim, handleCancel } from "../ui.js";
+import { fetchRemotePath } from "./fetch.js";
 import { applyEvent, createWatchStats, summaryLines } from "./watch-monitor.js";
 
 export type DeployFn = (account: HsAccount, cwd: string) => Promise<void>;
@@ -45,6 +47,18 @@ export async function watchAction(
     p.log.warn(`Local folder not found: ${localDir}. Fetch it first.`);
     return;
   }
+
+  // Local files may be stale (no cheap remote diff exists in the hs CLI),
+  // so surface the last fetch age and offer a refresh before watching.
+  const fetched = lastFetch(await loadFetchLog(cwd), portalKey(account), remotePath);
+  const age = fetched ? timeAgo(fetched) : "never";
+  const doFetch = handleCancel(
+    await p.confirm({
+      message: `Fetch latest from HubSpot before watching? ${dim(`(last fetch: ${age} — overwrites local changes)`)}`,
+      initialValue: false,
+    })
+  );
+  if (doFetch && !(await fetchRemotePath(account, remotePath, cwd))) return;
 
   p.note(
     `${pc.cyan(remotePath)}\n${dim("Saved changes upload automatically. Press Ctrl+C to stop.")}`,

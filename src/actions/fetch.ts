@@ -1,9 +1,12 @@
+import { createInterface } from "node:readline";
 import * as p from "@clack/prompts";
 import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
-import { runHs } from "../hs/runner.js";
+import { streamHs } from "../hs/runner.js";
+import { stripAnsi } from "../hs/watch-parser.js";
 import { commitScoped, isGitRepo } from "../git.js";
 import { designManagerUrl, localDirFor, portalScope } from "../paths.js";
+import { loadFetchLog, recordFetch, saveFetchLog } from "../state/fetch-log.js";
 import {
   addPath,
   loadPathsConfig,
@@ -13,23 +16,43 @@ import {
 } from "../state/paths-config.js";
 import { dim, handleCancel, openUrl } from "../ui.js";
 
-async function fetchOne(account: HsAccount, remotePath: string, cwd: string): Promise<boolean> {
+/** Download one remote path with a live file counter; records the fetch time on success. */
+export async function fetchRemotePath(account: HsAccount, remotePath: string, cwd: string): Promise<boolean> {
   const localDir = localDirFor(account, remotePath, cwd);
   const spinner = p.spinner();
   spinner.start(`Downloading ${remotePath}`);
-  const result = await runHs(["cms", "fetch", remotePath, localDir, "--overwrite"], {
+
+  let files = 0;
+  const errors: string[] = [];
+  const child = streamHs(["cms", "fetch", remotePath, localDir, "--overwrite"], {
     accountId: account.accountId,
     cwd,
   });
-  if (result.ok) {
-    spinner.stop(`Downloaded ${remotePath} → ${dim(localDir)}`);
+  const handleLine = (raw: string): void => {
+    const line = stripAnsi(raw);
+    if (/^Wrote file /.test(line)) {
+      files++;
+      spinner.message(`Downloading ${remotePath} ${dim(`· ${files} file(s)`)}`);
+    } else if (/\b(error|failed|failure)\b/i.test(line)) {
+      errors.push(line);
+    }
+  };
+  if (child.stdout) createInterface({ input: child.stdout }).on("line", handleLine);
+  if (child.stderr) createInterface({ input: child.stderr }).on("line", handleLine);
+
+  const result = await child;
+  if (result.exitCode === 0) {
+    spinner.stop(`Downloaded ${remotePath} ${dim(`· ${files} file(s) → ${localDir}`)}`);
+    const log = await loadFetchLog(cwd);
+    await saveFetchLog(recordFetch(log, portalKey(account), remotePath), cwd);
     return true;
   }
   spinner.stop(`Failed to download ${remotePath}`, 1);
-  const detail = (result.stderr || result.stdout).trim();
-  if (detail) p.log.error(detail);
+  for (const line of errors) p.log.error(line);
   return false;
 }
+
+const fetchOne = fetchRemotePath;
 
 /** Menu action: download a new remote path and register it in paths-config.json. */
 export async function configurePathAction(account: HsAccount, cwd: string = process.cwd()): Promise<void> {
