@@ -2,7 +2,9 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { deployAction } from "./actions/deploy.js";
 import { configurePathAction, fetchAction } from "./actions/fetch.js";
+import { helperAction } from "./actions/helper.js";
 import { historyAction } from "./actions/history.js";
+import { removePathAction } from "./actions/remove-path.js";
 import { watchAction } from "./actions/watch.js";
 import { discoverAccounts, type HsAccount } from "./hs/accounts.js";
 import { checkHsCli, hsInstallHint } from "./hs/version.js";
@@ -90,15 +92,18 @@ export async function runApp(): Promise<void> {
       case "history":
         await historyAction(portal);
         break;
+      case "remove":
+        await removePathAction(portal);
+        break;
+      case "helper":
+        await helperAction();
+        break;
       case "portal":
         portal = await selectPortal(discovered.accounts);
         break;
       case "exit":
         p.outro("Bye!");
         return;
-      default:
-        p.log.warn(`Action "${action}" not implemented yet (upcoming plan steps).`);
-        break;
     }
   }
 }
