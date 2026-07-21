@@ -21,3 +21,39 @@ export function dim(text: string): string {
 export function accent(text: string): string {
   return pc.cyan(text);
 }
+
+interface TreeNode {
+  children: Map<string, TreeNode>;
+}
+
+function insertPath(root: TreeNode, path: string): void {
+  const segments = path.split("/").filter(Boolean);
+  let node = root;
+  for (const segment of segments) {
+    let child = node.children.get(segment);
+    if (!child) {
+      child = { children: new Map() };
+      node.children.set(segment, child);
+    }
+    node = child;
+  }
+}
+
+function renderNode(node: TreeNode, prefix: string): string[] {
+  const lines: string[] = [];
+  const entries = [...node.children.entries()];
+  entries.forEach(([name, child], index) => {
+    const last = index === entries.length - 1;
+    lines.push(`${prefix}${last ? "└─ " : "├─ "}${name}`);
+    lines.push(...renderNode(child, `${prefix}${last ? "   " : "│  "}`));
+  });
+  return lines;
+}
+
+/** Render a list of remote paths as an indented tree, nesting shared segments. */
+export function renderTree(paths: string[]): string {
+  if (paths.length === 0) return dim("No saved paths yet — use “Configure new path”.");
+  const root: TreeNode = { children: new Map() };
+  for (const path of paths) insertPath(root, path);
+  return renderNode(root, "").join("\n");
+}

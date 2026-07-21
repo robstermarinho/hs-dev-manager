@@ -8,9 +8,10 @@ import { addPortalAction } from "./actions/portal.js";
 import { removePathAction } from "./actions/remove-path.js";
 import { offerHsUpgrade } from "./actions/upgrade.js";
 import { watchAction } from "./actions/watch.js";
-import { discoverAccounts, type AccountsResult, type HsAccount } from "./hs/accounts.js";
+import { discoverAccounts, portalKey, type AccountsResult, type HsAccount } from "./hs/accounts.js";
 import { checkHsCli, hsInstallHint } from "./hs/version.js";
-import { accent, dim, fail, handleCancel } from "./ui.js";
+import { loadPathsConfig, portalPaths } from "./state/paths-config.js";
+import { accent, dim, fail, handleCancel, renderTree } from "./ui.js";
 
 const ADD_PORTAL = Symbol("add-portal");
 
@@ -61,17 +62,27 @@ async function pickPortal(discovered: AccountsResult): Promise<HsAccount> {
   }
 }
 
+/** Show the current portal's saved paths as a tree above the menu. */
+async function showPortalPaths(portal: HsAccount, cwd: string = process.cwd()): Promise<void> {
+  const config = await loadPathsConfig(cwd);
+  const paths = portalPaths(config, portalKey(portal));
+  p.note(renderTree(paths), `Saved paths · ${accent(portal.name)}`);
+}
+
 async function mainMenu(portal: HsAccount): Promise<MenuAction> {
   const action = handleCancel(
     await p.select({
       message: `Portal ${accent(portal.name)} ${dim(`(${portal.accountId})`)}`,
       options: [
+        // Paths
         { value: "configure" as const, label: "Configure new path", hint: "download a remote path from HubSpot" },
+        { value: "remove" as const, label: "Remove saved path", hint: "unregister a path, optionally delete local files" },
+        // Sync & deploy
         { value: "fetch" as const, label: "Fetch / update local", hint: "re-download with --overwrite" },
         { value: "watch" as const, label: "Watch", hint: "auto-sync on save" },
         { value: "deploy" as const, label: "Deploy", hint: "upload changes + git commit" },
         { value: "history" as const, label: "Deploy history", hint: "view past deploys (read-only)" },
-        { value: "remove" as const, label: "Remove saved path", hint: "unregister a path, optionally delete local files" },
+        // Session
         { value: "portal" as const, label: "Switch / add portal", hint: "change portal or authenticate a new one" },
         { value: "helper" as const, label: "Help", hint: "quick-start guide" },
         { value: "exit" as const, label: "Exit" },
@@ -103,6 +114,7 @@ export async function runApp(): Promise<void> {
   let portal = await pickPortal(discovered);
 
   while (true) {
+    await showPortalPaths(portal);
     const action = await mainMenu(portal);
 
     switch (action) {
