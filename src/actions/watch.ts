@@ -24,12 +24,17 @@ export async function watchAction(
     return;
   }
 
+  const BACK = "__back__";
   const remotePath = handleCancel(
     await p.select({
       message: "Which path to watch?",
-      options: paths.map((path) => ({ value: path, label: path })),
+      options: [
+        ...paths.map((path) => ({ value: path, label: path })),
+        { value: BACK, label: "← Back" },
+      ],
     })
   );
+  if (remotePath === BACK) return;
 
   const localDir = localDirFor(account, remotePath, cwd);
   if (!existsSync(localDir)) {

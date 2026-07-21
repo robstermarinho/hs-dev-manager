@@ -18,12 +18,17 @@ export async function removePathAction(account: HsAccount, cwd: string = process
     return;
   }
 
+  const BACK = "__back__";
   const remotePath = handleCancel(
     await p.select({
       message: "Which path to remove?",
-      options: paths.map((path) => ({ value: path, label: path })),
+      options: [
+        ...paths.map((path) => ({ value: path, label: path })),
+        { value: BACK, label: "← Back" },
+      ],
     })
   );
+  if (remotePath === BACK) return;
 
   const confirmed = handleCancel(
     await p.confirm({ message: `Remove ${remotePath} from paths-config.json? (HubSpot files are not affected)` })

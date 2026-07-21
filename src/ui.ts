@@ -1,5 +1,18 @@
 import * as p from "@clack/prompts";
+import { execa } from "execa";
 import pc from "picocolors";
+
+/** Open a URL in the user's default browser. Best-effort; resolves false on failure. */
+export async function openUrl(url: string): Promise<boolean> {
+  const command =
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  try {
+    const result = await execa(command, [url], { reject: false, stdio: "ignore" });
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
 
 export function fail(message: string): never {
   p.cancel(message);

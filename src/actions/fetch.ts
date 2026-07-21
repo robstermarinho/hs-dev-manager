@@ -3,7 +3,7 @@ import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { runHs } from "../hs/runner.js";
 import { commitScoped, isGitRepo } from "../git.js";
-import { localDirFor, portalScope } from "../paths.js";
+import { designManagerUrl, localDirFor, portalScope } from "../paths.js";
 import {
   addPath,
   loadPathsConfig,
@@ -11,7 +11,7 @@ import {
   portalPaths,
   savePathsConfig,
 } from "../state/paths-config.js";
-import { dim, handleCancel } from "../ui.js";
+import { dim, handleCancel, openUrl } from "../ui.js";
 
 async function fetchOne(account: HsAccount, remotePath: string, cwd: string): Promise<boolean> {
   const localDir = localDirFor(account, remotePath, cwd);
@@ -33,6 +33,15 @@ async function fetchOne(account: HsAccount, remotePath: string, cwd: string): Pr
 
 /** Menu action: download a new remote path and register it in paths-config.json. */
 export async function configurePathAction(account: HsAccount, cwd: string = process.cwd()): Promise<void> {
+  const dmUrl = designManagerUrl(account);
+  p.log.info(`Design Manager: ${dim(dmUrl)}`);
+  const open = handleCancel(
+    await p.confirm({ message: "Open Design Manager in your browser to find the path?", initialValue: false })
+  );
+  if (open && !(await openUrl(dmUrl))) {
+    p.log.warn(`Could not open the browser. Visit: ${dmUrl}`);
+  }
+
   const input = handleCancel(
     await p.text({
       message: "Design Manager remote path (e.g. /my-theme or /marketing/templates)",
@@ -69,15 +78,18 @@ export async function fetchAction(account: HsAccount, cwd: string = process.cwd(
   }
 
   const ALL = "__all__";
+  const BACK = "__back__";
   const choice = handleCancel(
     await p.select({
       message: "Which path to update? (overwrites local changes)",
       options: [
         ...paths.map((path) => ({ value: path, label: path })),
         ...(paths.length > 1 ? [{ value: ALL, label: `All (${paths.length})` }] : []),
+        { value: BACK, label: "← Back" },
       ],
     })
   );
+  if (choice === BACK) return;
 
   const confirmed = handleCancel(
     await p.confirm({ message: "Overwrite local files with the HubSpot version?" })
