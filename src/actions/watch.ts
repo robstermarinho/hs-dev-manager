@@ -1,12 +1,16 @@
 import { existsSync } from "node:fs";
+import { createInterface } from "node:readline";
 import * as p from "@clack/prompts";
+import pc from "picocolors";
 import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
-import { spawnHs } from "../hs/runner.js";
+import { streamHs } from "../hs/runner.js";
+import { parseWatchLine } from "../hs/watch-parser.js";
 import { changedFiles, isGitRepo } from "../git.js";
 import { localDirFor, portalScope } from "../paths.js";
 import { loadPathsConfig, portalPaths } from "../state/paths-config.js";
 import { dim, handleCancel } from "../ui.js";
+import { applyEvent, createWatchStats, summaryLines } from "./watch-monitor.js";
 
 export type DeployFn = (account: HsAccount, cwd: string) => Promise<void>;
 
@@ -42,21 +46,39 @@ export async function watchAction(
     return;
   }
 
-  p.log.info(`Watching ${remotePath} — saved changes upload automatically. ${dim("Press Ctrl+C to stop.")}`);
+  p.note(
+    `${pc.cyan(remotePath)}\n${dim("Saved changes upload automatically. Press Ctrl+C to stop.")}`,
+    `Watching · ${account.name}`
+  );
+
+  const stats = createWatchStats();
+  const child = streamHs(["cms", "watch", localDir, remotePath], {
+    accountId: account.accountId,
+    cwd,
+  });
+
+  const handleLine = (line: string): void => {
+    const event = parseWatchLine(line);
+    if (!event) return;
+    const rendered = applyEvent(stats, event, remotePath);
+    if (rendered) process.stdout.write(`${rendered}\n`);
+  };
+  if (child.stdout) createInterface({ input: child.stdout }).on("line", handleLine);
+  if (child.stderr) createInterface({ input: child.stderr }).on("line", handleLine);
 
   // Swallow SIGINT in the parent so Ctrl+C only stops the watch child,
   // returning the user to the menu instead of killing the CLI.
-  const swallowSigint = (): void => {};
+  const swallowSigint = (): void => {
+    child.kill("SIGINT");
+  };
   process.on("SIGINT", swallowSigint);
   try {
-    await spawnHs(["cms", "watch", localDir, remotePath], {
-      accountId: account.accountId,
-      cwd,
-    });
+    await child;
   } finally {
     process.removeListener("SIGINT", swallowSigint);
   }
-  p.log.info("Watch stopped.");
+
+  p.note(summaryLines(stats).join("\n"), `Watch stopped · ${account.name}`);
 
   if (!(await isGitRepo(cwd))) return;
   const changed = await changedFiles(cwd, portalScope(account));

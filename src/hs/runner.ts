@@ -47,3 +47,13 @@ export function spawnHs(args: string[], options: RunHsOptions = {}): ResultPromi
     reject: false,
   });
 }
+
+/** Spawn `hs` with piped stdout/stderr so the caller can read output line by line. */
+export function streamHs(args: string[], options: RunHsOptions = {}): ResultPromise {
+  return execa("hs", buildArgs(args, options), {
+    cwd: options.cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    reject: false,
+  });
+}
