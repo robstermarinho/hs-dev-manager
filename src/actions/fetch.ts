@@ -45,11 +45,14 @@ export async function configurePathAction(account: HsAccount, cwd: string = proc
   const input = handleCancel(
     await p.text({
       message: "Design Manager remote path (e.g. /my-theme or /marketing/templates)",
-      placeholder: "/remote/path",
-      validate: (value) => (normalizeRemotePath(value ?? "") ? undefined : "Enter a path"),
+      placeholder: "Leave empty to go back",
     })
   );
-  const remotePath = normalizeRemotePath(input);
+  const remotePath = normalizeRemotePath(input ?? "");
+  if (!remotePath) {
+    p.log.warn("No path entered. Back to menu.");
+    return;
+  }
 
   const config = await loadPathsConfig(cwd);
   const key = portalKey(account);

@@ -25,7 +25,7 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
   const scope = portalScope(account);
   const changed = filterDeployable(await changedFiles(cwd, scope));
   if (changed.length === 0) {
-    p.log.info(`No changes in ${scope}.`);
+    p.log.warn(`No changes in ${scope}.`);
     return;
   }
 

@@ -12,7 +12,7 @@ export async function historyAction(account: HsAccount, cwd: string = process.cw
   const deploys = history.deploys.filter((d) => d.portal_id === account.accountId).slice(0, SHOW_LAST);
 
   if (deploys.length === 0) {
-    p.log.info(`No deploys recorded for ${account.name}.`);
+    p.log.warn(`No deploys recorded for ${account.name}.`);
     return;
   }
 

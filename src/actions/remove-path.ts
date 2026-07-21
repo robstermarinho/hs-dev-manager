@@ -14,7 +14,7 @@ export async function removePathAction(account: HsAccount, cwd: string = process
   const paths = portalPaths(config, key);
 
   if (paths.length === 0) {
-    p.log.info("No saved paths for this portal.");
+    p.log.warn("No saved paths for this portal.");
     return;
   }
 

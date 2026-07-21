@@ -11,8 +11,8 @@ export interface PathsConfig {
 const EMPTY: PathsConfig = { portals: {} };
 
 /** Normalize a Design Manager remote path: leading slash, no trailing slash. */
-export function normalizeRemotePath(input: string): string {
-  let path = input.trim();
+export function normalizeRemotePath(input: string | undefined | null): string {
+  let path = (input ?? "").trim();
   if (!path) return "";
   if (!path.startsWith("/")) path = `/${path}`;
   while (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
