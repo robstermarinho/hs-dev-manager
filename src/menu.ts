@@ -10,6 +10,7 @@ import { offerHsUpgrade } from "./actions/upgrade.js";
 import { watchAction } from "./actions/watch.js";
 import { discoverAccounts, portalKey, type AccountsResult, type HsAccount } from "./hs/accounts.js";
 import { checkHsCli, hsInstallHint } from "./hs/version.js";
+import { latestSelfVersion, selfUpdateHint } from "./self-version.js";
 import { loadLastPortalId, saveLastPortalId } from "./state/last-portal.js";
 import { loadPathsConfig, portalPaths } from "./state/paths-config.js";
 import { accent, dim, fail, handleCancel, renderTree } from "./ui.js";
@@ -112,6 +113,9 @@ async function mainMenu(portal: HsAccount): Promise<MenuAction> {
 export async function runApp(): Promise<void> {
   p.intro(pc.bgCyan(pc.black(" hubspot-dev-manager ")));
 
+  // Kick off the self-update lookup now; awaited (already resolved by then) after account discovery.
+  const selfLatest = latestSelfVersion();
+
   let cli = await checkHsCli();
   if (!cli.supported) {
     fail(hsInstallHint(cli));
@@ -127,6 +131,10 @@ export async function runApp(): Promise<void> {
     fail("No HubSpot accounts found. Authenticate with: hs account auth");
   }
   p.log.info(dim(`${discovered.accounts.length} accounts · ${discovered.source}`));
+
+  const latest = await selfLatest;
+  const hint = latest ? selfUpdateHint(latest) : undefined;
+  if (hint) p.log.warn(hint);
 
   let portal = await pickPortal(discovered);
 
