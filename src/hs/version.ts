@@ -7,6 +7,8 @@ export const HS_MIN_VERSION = "8.0.0";
 export const HS_MAX_TESTED_MAJOR = 8;
 /** npm package that provides the `hs` binary. */
 export const HS_PACKAGE = "@hubspot/cli";
+/** Keep optional registry checks from delaying the interactive menu indefinitely. */
+export const NPM_LOOKUP_TIMEOUT_MS = 5_000;
 
 export type HsSupport = "not-installed" | "unknown" | "too-old" | "untested" | "ok";
 
@@ -69,7 +71,10 @@ export async function checkHsCli(): Promise<HsCliStatus> {
 /** Best-effort lookup of the latest published version on npm. Undefined on any failure. */
 export async function latestHsVersion(): Promise<string | undefined> {
   try {
-    const result = await execa("npm", ["view", HS_PACKAGE, "version"], { reject: false });
+    const result = await execa("npm", ["view", HS_PACKAGE, "version"], {
+      reject: false,
+      timeout: NPM_LOOKUP_TIMEOUT_MS,
+    });
     if (result.exitCode !== 0) return undefined;
     return parseHsVersion(result.stdout);
   } catch {

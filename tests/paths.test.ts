@@ -8,6 +8,10 @@ describe("localDirFor", () => {
   it("builds sh-compatible layout under src/", () => {
     expect(localDirFor(account, "/theme/js", "/proj")).toBe("/proj/src/alpha-111/theme/js");
   });
+
+  it("rejects remote paths that escape the portal directory", () => {
+    expect(() => localDirFor(account, "/../../outside", "/proj")).toThrow("escapes the portal directory");
+  });
 });
 
 describe("portalScope", () => {
@@ -24,5 +28,9 @@ describe("remotePathFor", () => {
   it("returns undefined for files outside the portal dir", () => {
     expect(remotePathFor(account, "src/other-9/x.css")).toBeUndefined();
     expect(remotePathFor(account, "README.md")).toBeUndefined();
+  });
+
+  it("accepts Git-style and Windows-style separators", () => {
+    expect(remotePathFor(account, "src\\alpha-111\\theme\\main.css")).toBe("/theme/main.css");
   });
 });

@@ -14,9 +14,11 @@ const EMPTY: PathsConfig = { portals: {} };
 export function normalizeRemotePath(input: string | undefined | null): string {
   let path = (input ?? "").trim();
   if (!path) return "";
+  if (path.includes("\0") || path.includes("\\")) return "";
   if (!path.startsWith("/")) path = `/${path}`;
-  while (path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
-  return path;
+  const segments = path.split("/").filter(Boolean);
+  if (segments.some((segment) => segment === "." || segment === "..")) return "";
+  return segments.length === 0 ? "/" : `/${segments.join("/")}`;
 }
 
 export function parsePathsConfig(text: string): PathsConfig {

@@ -38,7 +38,13 @@ export async function removePathAction(account: HsAccount, cwd: string = process
   await savePathsConfig(removePath(config, key, remotePath), cwd);
   p.log.success(`Removed ${remotePath} from config.`);
 
-  const localDir = localDirFor(account, remotePath, cwd);
+  let localDir: string;
+  try {
+    localDir = localDirFor(account, remotePath, cwd);
+  } catch (error) {
+    p.log.error(error instanceof Error ? error.message : String(error));
+    return;
+  }
   if (!existsSync(localDir)) return;
 
   const deleteLocal = handleCancel(

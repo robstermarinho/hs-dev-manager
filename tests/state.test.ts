@@ -26,7 +26,14 @@ describe("normalizeRemotePath", () => {
     expect(normalizeRemotePath("foo/bar")).toBe("/foo/bar");
     expect(normalizeRemotePath("/foo/bar///")).toBe("/foo/bar");
     expect(normalizeRemotePath(" /foo ")).toBe("/foo");
+    expect(normalizeRemotePath("//foo///bar//")).toBe("/foo/bar");
     expect(normalizeRemotePath("")).toBe("");
+  });
+
+  it("rejects paths that could escape the local portal directory", () => {
+    expect(normalizeRemotePath("/foo/../bar")).toBe("");
+    expect(normalizeRemotePath("/foo/./bar")).toBe("");
+    expect(normalizeRemotePath("foo\\bar")).toBe("");
   });
 });
 

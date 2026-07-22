@@ -7,6 +7,8 @@ export type WatchEvent =
   | { type: "error"; message: string }
   | { type: "raw"; message: string };
 
+// ANSI color sequences begin with the ESC control character by definition.
+// eslint-disable-next-line no-control-regex
 const ANSI = /\x1b\[[0-9;]*m/g;
 
 /** Remove ANSI color codes and trim a log line. */

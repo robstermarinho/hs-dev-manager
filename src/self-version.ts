@@ -1,6 +1,6 @@
 import { execa } from "execa";
 import pkg from "../package.json" with { type: "json" };
-import { compareVersions, parseHsVersion } from "./hs/version.js";
+import { compareVersions, NPM_LOOKUP_TIMEOUT_MS, parseHsVersion } from "./hs/version.js";
 
 /** This tool's npm package name and the version compiled into the bundle. */
 export const SELF_PACKAGE = pkg.name;
@@ -9,7 +9,10 @@ export const SELF_VERSION = pkg.version;
 /** Best-effort lookup of the latest published version of this tool on npm. Undefined on any failure. */
 export async function latestSelfVersion(): Promise<string | undefined> {
   try {
-    const result = await execa("npm", ["view", SELF_PACKAGE, "version"], { reject: false });
+    const result = await execa("npm", ["view", SELF_PACKAGE, "version"], {
+      reject: false,
+      timeout: NPM_LOOKUP_TIMEOUT_MS,
+    });
     if (result.exitCode !== 0) return undefined;
     return parseHsVersion(result.stdout);
   } catch {

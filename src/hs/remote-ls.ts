@@ -32,7 +32,7 @@ export function parseLsOutput(output: string): RemoteEntry[] {
 
 /** List a remote Design Manager directory. Undefined when the listing fails. */
 export async function listRemote(accountId: string, path: string): Promise<RemoteEntry[] | undefined> {
-  const result = await runHs(["cms", "ls", path || "/"], { accountId });
+  const result = await runHs(["cms", "list", path || "/"], { accountId });
   if (!result.ok) return undefined;
   return parseLsOutput(result.stdout);
 }

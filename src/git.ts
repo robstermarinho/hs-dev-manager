@@ -1,8 +1,18 @@
 import { execa } from "execa";
 
-async function git(args: string[], cwd: string): Promise<{ ok: boolean; stdout: string }> {
+interface GitResult {
+  ok: boolean;
+  exitCode: number;
+  stdout: string;
+}
+
+async function git(args: string[], cwd: string): Promise<GitResult> {
   const result = await execa("git", args, { cwd, reject: false });
-  return { ok: result.exitCode === 0, stdout: result.stdout ?? "" };
+  return {
+    ok: result.exitCode === 0,
+    exitCode: result.exitCode ?? 1,
+    stdout: result.stdout ?? "",
+  };
 }
 
 export async function isGitRepo(cwd: string): Promise<boolean> {
@@ -10,24 +20,32 @@ export async function isGitRepo(cwd: string): Promise<boolean> {
   return result.ok && result.stdout.trim() === "true";
 }
 
-/**
- * Changed files (modified, staged, untracked) limited to `scope` (repo-relative path).
- * Parses `git status --porcelain -- <scope>`.
- */
+/** Parse NUL-delimited porcelain v1 output without Git's path quoting. */
+export function parsePorcelainZ(output: string): string[] {
+  const records = output.split("\0");
+  const files: string[] = [];
+
+  for (let index = 0; index < records.length; index++) {
+    const record = records[index];
+    if (!record || record.length < 4) continue;
+
+    const status = record.slice(0, 2);
+    files.push(record.slice(3));
+
+    // With -z, rename/copy records are: "XY destination\0source\0".
+    if (status.includes("R") || status.includes("C")) index++;
+  }
+
+  return files;
+}
+
+/** Changed files (modified, staged, untracked) limited to a repo-relative scope. */
 export async function changedFiles(cwd: string, scope?: string): Promise<string[]> {
-  const args = ["status", "--porcelain"];
+  const args = ["status", "--porcelain=v1", "-z", "--untracked-files=all"];
   if (scope) args.push("--", scope);
   const result = await git(args, cwd);
   if (!result.ok) return [];
-  return result.stdout
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => {
-      const path = line.slice(3);
-      // Renames appear as "old -> new"; keep the new path.
-      const arrow = path.indexOf(" -> ");
-      return (arrow >= 0 ? path.slice(arrow + 4) : path).replace(/^"|"$/g, "");
-    });
+  return parsePorcelainZ(result.stdout);
 }
 
 /**
@@ -40,7 +58,8 @@ export async function commitScoped(cwd: string, scope: string | string[], messag
   const add = await git(["add", "--", ...paths], cwd);
   if (!add.ok) return false;
   const staged = await git(["diff", "--cached", "--quiet", "--", ...paths], cwd);
-  if (staged.ok) return false; // exit 0 = no staged changes in scope
+  if (staged.exitCode === 0) return false; // no staged changes in scope
+  if (staged.exitCode !== 1) return false; // git diff itself failed
   const commit = await git(["commit", "-m", message, "--", ...paths], cwd);
   return commit.ok;
 }

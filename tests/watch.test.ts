@@ -5,25 +5,25 @@ import { applyEvent, createWatchStats, shortenPath, summaryLines } from "../src/
 describe("parseWatchLine", () => {
   it("parses the ready line", () => {
     const e = parseWatchLine(
-      "Watcher is ready and watching /repo/src/example-theme-222222/example-theme. Any changes detected will be automatically uploaded"
+      "Watcher is ready and watching /repo/src/example-123456/example-theme. Any changes detected will be automatically uploaded"
     );
-    expect(e).toEqual({ type: "ready", dir: "/repo/src/example-theme-222222/example-theme" });
+    expect(e).toEqual({ type: "ready", dir: "/repo/src/example-123456/example-theme" });
   });
 
   it("parses an uploaded line", () => {
     const e = parseWatchLine(
-      "Uploaded file /repo/src/example-theme-222222/example-theme/modules/hero.module/module.html to /example-theme/modules/hero.module/module.html"
+      "Uploaded file /repo/src/example-123456/example-theme/modules/hero.module/module.html to /example-theme/modules/hero.module/module.html"
     );
     expect(e).toEqual({
       type: "uploaded",
-      localPath: "/repo/src/example-theme-222222/example-theme/modules/hero.module/module.html",
+      localPath: "/repo/src/example-123456/example-theme/modules/hero.module/module.html",
       remotePath: "/example-theme/modules/hero.module/module.html",
     });
   });
 
   it("parses a preview url", () => {
-    const e = parseWatchLine("To preview this theme, visit: https://app.hubspot.com/theme-previewer/222222/edit/example-theme");
-    expect(e).toEqual({ type: "preview", url: "https://app.hubspot.com/theme-previewer/222222/edit/example-theme" });
+    const e = parseWatchLine("To preview this theme, visit: https://app.hubspot.com/theme-previewer/123456/edit/example-theme");
+    expect(e).toEqual({ type: "preview", url: "https://app.hubspot.com/theme-previewer/123456/edit/example-theme" });
   });
 
   it("flags error lines", () => {

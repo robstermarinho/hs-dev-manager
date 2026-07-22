@@ -2,12 +2,20 @@ import * as p from "@clack/prompts";
 import { execa } from "execa";
 import pc from "picocolors";
 
+export function browserCommand(
+  url: string,
+  platform: NodeJS.Platform = process.platform
+): { command: string; args: string[] } {
+  if (platform === "darwin") return { command: "open", args: [url] };
+  if (platform === "win32") return { command: "cmd", args: ["/d", "/s", "/c", "start", "", url] };
+  return { command: "xdg-open", args: [url] };
+}
+
 /** Open a URL in the user's default browser. Best-effort; resolves false on failure. */
 export async function openUrl(url: string): Promise<boolean> {
-  const command =
-    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+  const { command, args } = browserCommand(url);
   try {
-    const result = await execa(command, [url], { reject: false, stdio: "ignore" });
+    const result = await execa(command, args, { reject: false, stdio: "ignore" });
     return result.exitCode === 0;
   } catch {
     return false;
