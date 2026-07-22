@@ -101,8 +101,8 @@ async function mainMenu(portal: HsAccount): Promise<MenuAction> {
         { value: "deploy" as const, label: "Deploy", hint: "upload changes + git commit" },
         { value: "history" as const, label: "Deploy history", hint: "view past deploys (read-only)" },
         // Session
-        { value: "portal" as const, label: "Switch / add portal", hint: "change portal or authenticate a new one" },
         { value: "helper" as const, label: "Help", hint: "quick-start guide" },
+        { value: "portal" as const, label: "← Back" },
         { value: "exit" as const, label: "Exit" },
       ],
     })
