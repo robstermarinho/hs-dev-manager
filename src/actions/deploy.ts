@@ -103,7 +103,9 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
     p.log.warn("Git commit failed or nothing to commit.");
   }
 
-  const status = failed.length === 0 && committed ? "success" : "partial";
+  // History status tracks the upload outcome only; a commit failure is
+  // surfaced separately and must not mislabel a fully uploaded deploy.
+  const status = failed.length === 0 ? "success" : "partial";
 
   try {
     const history = await loadHistory(cwd);

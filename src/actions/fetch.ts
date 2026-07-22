@@ -132,6 +132,16 @@ export async function configurePathAction(
   cwd: string = process.cwd(),
   fetcher: FetchRemoteFn = fetchRemotePath
 ): Promise<void> {
+  // Configure also uses --overwrite and its initial commit spans the portal.
+  // Require a clean portal scope up front — before the user spends time
+  // browsing for a path — so existing work cannot be overwritten or
+  // accidentally included in that commit.
+  const gitState = await portalGitState(account, cwd);
+  if (gitState.dirty.length > 0) {
+    reportDirtyPortal(gitState);
+    return;
+  }
+
   const remotePath = await pickRemotePath(account);
   if (!remotePath) {
     p.log.warn("No path selected. Back to menu.");
@@ -141,15 +151,6 @@ export async function configurePathAction(
   const config = await loadPathsConfig(cwd);
   const key = portalKey(account);
   const isNew = !portalPaths(config, key).includes(remotePath);
-
-  // Configure also uses --overwrite and its initial commit spans the portal.
-  // Require a clean portal scope so existing work cannot be overwritten or
-  // accidentally included in that commit.
-  const gitState = await portalGitState(account, cwd);
-  if (gitState.dirty.length > 0) {
-    reportDirtyPortal(gitState);
-    return;
-  }
 
   if (!(await fetcher(account, remotePath, cwd))) return;
 

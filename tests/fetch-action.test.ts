@@ -85,5 +85,8 @@ describe("configurePathAction", () => {
 
     expect(fetcher).not.toHaveBeenCalled();
     expect(prompts.error).toHaveBeenCalledWith(expect.stringContaining("Uncommitted changes"));
+    // The guard runs before the path picker, so the user is never prompted.
+    expect(prompts.select).not.toHaveBeenCalled();
+    expect(prompts.text).not.toHaveBeenCalled();
   });
 });
