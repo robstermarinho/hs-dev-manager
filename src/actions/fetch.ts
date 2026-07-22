@@ -15,6 +15,7 @@ import {
   savePathsConfig,
 } from "../state/paths-config.js";
 import { dim, handleCancel, openUrl } from "../ui.js";
+import { browseRemotePath } from "./browse.js";
 
 /** Download one remote path with a live file counter; records the fetch time on success. */
 export async function fetchRemotePath(account: HsAccount, remotePath: string, cwd: string): Promise<boolean> {
@@ -54,26 +55,54 @@ export async function fetchRemotePath(account: HsAccount, remotePath: string, cw
 
 const fetchOne = fetchRemotePath;
 
+/** Ask for a remote path by browsing the Design Manager or typing it. */
+async function pickRemotePath(account: HsAccount): Promise<string | undefined> {
+  const BROWSE = "browse";
+  const TYPE = "type";
+  const OPEN = "open";
+  const BACK = "back";
+  const dmUrl = designManagerUrl(account);
+
+  while (true) {
+    const mode = handleCancel(
+      await p.select<string>({
+        message: "How do you want to pick the remote path?",
+        options: [
+          { value: BROWSE, label: "Browse Design Manager", hint: "navigate remote folders via hs cms ls" },
+          { value: TYPE, label: "Type path manually", hint: "e.g. /my-theme or /marketing/templates" },
+          { value: OPEN, label: "Open Design Manager in browser", hint: dmUrl },
+          { value: BACK, label: "← Back" },
+        ],
+      })
+    );
+
+    if (mode === BACK) return undefined;
+    if (mode === OPEN) {
+      if (!(await openUrl(dmUrl))) p.log.warn(`Could not open the browser. Visit: ${dmUrl}`);
+      continue;
+    }
+    if (mode === BROWSE) {
+      const picked = await browseRemotePath(account);
+      if (picked) return picked;
+      continue; // cancelled or listing failed — back to mode choice
+    }
+
+    const input = handleCancel(
+      await p.text({
+        message: "Design Manager remote path (e.g. /my-theme or /marketing/templates)",
+        placeholder: "Leave empty to go back",
+      })
+    );
+    const typed = normalizeRemotePath(input ?? "");
+    if (typed) return typed;
+  }
+}
+
 /** Menu action: download a new remote path and register it in paths-config.json. */
 export async function configurePathAction(account: HsAccount, cwd: string = process.cwd()): Promise<void> {
-  const dmUrl = designManagerUrl(account);
-  p.log.info(`Design Manager: ${dim(dmUrl)}`);
-  const open = handleCancel(
-    await p.confirm({ message: "Open Design Manager in your browser to find the path?", initialValue: false })
-  );
-  if (open && !(await openUrl(dmUrl))) {
-    p.log.warn(`Could not open the browser. Visit: ${dmUrl}`);
-  }
-
-  const input = handleCancel(
-    await p.text({
-      message: "Design Manager remote path (e.g. /my-theme or /marketing/templates)",
-      placeholder: "Leave empty to go back",
-    })
-  );
-  const remotePath = normalizeRemotePath(input ?? "");
+  const remotePath = await pickRemotePath(account);
   if (!remotePath) {
-    p.log.warn("No path entered. Back to menu.");
+    p.log.warn("No path selected. Back to menu.");
     return;
   }
 
