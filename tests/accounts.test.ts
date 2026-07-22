@@ -50,18 +50,18 @@ accounts:
 describe("parseAccountListOutput", () => {
   const output = `Default Account
   Source: /Users/x/.hscli/config.yml
-  Account: example-theme [standard] (222222)
+  Account: beta [standard] (222222)
 
 Accounts:
   Name                                Account ID    Auth Type
-  alpha [standard]                   111111         personalaccesskey
-  example-theme [standard]                 222222      personalaccesskey
+  alpha [standard]                    111111         personalaccesskey
+  beta [standard]                     222222         personalaccesskey
 `;
 
   it("parses table rows, strips [type], detects default", () => {
     expect(parseAccountListOutput(output)).toEqual([
       { name: "alpha", accountId: "111111", isDefault: false },
-      { name: "example-theme", accountId: "222222", isDefault: true },
+      { name: "beta", accountId: "222222", isDefault: true },
     ]);
   });
 

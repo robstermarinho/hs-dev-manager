@@ -57,7 +57,7 @@ export function parseConfigYaml(yamlText: string): HsAccount[] {
 /**
  * Parse the table printed by `hs account list`, e.g.:
  *   Name                Account ID    Auth Type
- *   alpha [standard]   111111         personalaccesskey
+ *   example-site [standard]   123456   personalaccesskey
  */
 export function parseAccountListOutput(output: string): HsAccount[] {
   const accounts: HsAccount[] = [];

@@ -3,8 +3,8 @@ import { renderTree } from "../src/ui.js";
 
 describe("renderTree", () => {
   it("renders sibling paths as leaves", () => {
-    expect(renderTree(["/example-theme", "/example-theme-sales-presentation"])).toBe(
-      ["├─ example-theme", "└─ example-theme-sales-presentation"].join("\n")
+    expect(renderTree(["/example-theme", "/example-sales-presentation"])).toBe(
+      ["├─ example-theme", "└─ example-sales-presentation"].join("\n")
     );
   });
 
