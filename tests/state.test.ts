@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -20,6 +20,7 @@ import {
   timestampNow,
   type DeployRecord,
 } from "../src/state/history.js";
+import { loadLastPortalId, saveLastPortalId } from "../src/state/last-portal.js";
 
 describe("normalizeRemotePath", () => {
   it("adds leading slash and strips trailing slashes", () => {
@@ -95,5 +96,20 @@ describe("deploy history", () => {
     await saveHistory(addDeploy({ deploys: [] }, record("first")), dir);
     const loaded = await loadHistory(dir);
     expect(loaded.deploys[0]?.message).toBe("first");
+  });
+});
+
+describe("last selected portal", () => {
+  it("persists and reloads a numeric account id", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hsdm-"));
+    await saveLastPortalId({ name: "example", accountId: "123456", isDefault: true }, dir);
+    await expect(loadLastPortalId(dir)).resolves.toBe("123456");
+  });
+
+  it("ignores a missing or invalid state file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "hsdm-"));
+    await expect(loadLastPortalId(dir)).resolves.toBeUndefined();
+    await writeFile(join(dir, ".hsaccount"), "not-an-id\n", "utf8");
+    await expect(loadLastPortalId(dir)).resolves.toBeUndefined();
   });
 });
