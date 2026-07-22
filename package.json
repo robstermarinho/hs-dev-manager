@@ -34,6 +34,14 @@
   ],
   "author": "Robert Marinho",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robstermarinho/hubspot-dev-manager.git"
+  },
+  "homepage": "https://github.com/robstermarinho/hubspot-dev-manager#readme",
+  "bugs": {
+    "url": "https://github.com/robstermarinho/hubspot-dev-manager/issues"
+  },
   "publishConfig": {
     "access": "public"
   },
