@@ -11,7 +11,7 @@ import { localDirFor, portalScope } from "../paths.js";
 import { lastFetch, loadFetchLog, timeAgo } from "../state/fetch-log.js";
 import { loadPathsConfig, portalPaths } from "../state/paths-config.js";
 import { dim, handleCancel } from "../ui.js";
-import { fetchRemotePath } from "./fetch.js";
+import { fetchRemotePath, portalGitState, reportDirtyPortal } from "./fetch.js";
 import { applyEvent, createWatchStats, summaryLines } from "./watch-monitor.js";
 
 export type DeployFn = (account: HsAccount, cwd: string) => Promise<void>;
@@ -42,7 +42,13 @@ export async function watchAction(
   );
   if (remotePath === BACK) return;
 
-  const localDir = localDirFor(account, remotePath, cwd);
+  let localDir: string;
+  try {
+    localDir = localDirFor(account, remotePath, cwd);
+  } catch (error) {
+    p.log.error(error instanceof Error ? error.message : String(error));
+    return;
+  }
   if (!existsSync(localDir)) {
     p.log.warn(`Local folder not found: ${localDir}. Fetch it first.`);
     return;
@@ -58,7 +64,14 @@ export async function watchAction(
       initialValue: false,
     })
   );
-  if (doFetch && !(await fetchRemotePath(account, remotePath, cwd))) return;
+  if (doFetch) {
+    const gitState = await portalGitState(account, cwd);
+    if (gitState.dirty.length > 0) {
+      reportDirtyPortal(gitState);
+      return;
+    }
+    if (!(await fetchRemotePath(account, remotePath, cwd))) return;
+  }
 
   p.note(
     `${pc.cyan(remotePath)}\n${dim("Saved changes upload automatically. Press Ctrl+C to stop.")}`,

@@ -95,7 +95,6 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
     return;
   }
 
-  const status = failed.length === 0 ? "success" : "partial";
   // Commit only the uploaded files so unselected (or failed) changes stay in the tree.
   const committed = await commitScoped(cwd, succeeded, message);
   if (committed) {
@@ -104,23 +103,31 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
     p.log.warn("Git commit failed or nothing to commit.");
   }
 
-  const history = await loadHistory(cwd);
-  await saveHistory(
-    addDeploy(history, {
-      timestamp: timestampNow(),
-      portal: account.name,
-      portal_id: account.accountId,
-      message,
-      status,
-      file_count: succeeded.length,
-      files: succeeded,
-    }),
-    cwd
-  );
+  const status = failed.length === 0 && committed ? "success" : "partial";
+
+  try {
+    const history = await loadHistory(cwd);
+    await saveHistory(
+      addDeploy(history, {
+        timestamp: timestampNow(),
+        portal: account.name,
+        portal_id: account.accountId,
+        message,
+        status,
+        file_count: succeeded.length,
+        files: succeeded,
+      }),
+      cwd
+    );
+  } catch (error) {
+    p.log.warn(`Upload finished, but deploy history could not be saved: ${error instanceof Error ? error.message : error}`);
+  }
 
   if (status === "success") {
     p.log.success(`Deploy complete: ${succeeded.length} file(s) uploaded.`);
   } else {
-    p.log.warn(`Partial deploy: ${succeeded.length} uploaded, ${failed.length} failed.`);
+    p.log.warn(
+      `Partial deploy: ${succeeded.length} uploaded, ${failed.length} failed${committed ? "" : ", git commit not created"}.`
+    );
   }
 }
