@@ -30,12 +30,17 @@ export async function changedFiles(cwd: string, scope?: string): Promise<string[
     });
 }
 
-/** Stage and commit only files under `scope`. Returns false if nothing to commit or on failure. */
-export async function commitScoped(cwd: string, scope: string, message: string): Promise<boolean> {
-  const add = await git(["add", "--", scope], cwd);
+/**
+ * Stage and commit only the given pathspec(s) — a scope directory or a list of
+ * files. Returns false if nothing to commit or on failure.
+ */
+export async function commitScoped(cwd: string, scope: string | string[], message: string): Promise<boolean> {
+  const paths = Array.isArray(scope) ? scope : [scope];
+  if (paths.length === 0) return false;
+  const add = await git(["add", "--", ...paths], cwd);
   if (!add.ok) return false;
-  const staged = await git(["diff", "--cached", "--quiet", "--", scope], cwd);
+  const staged = await git(["diff", "--cached", "--quiet", "--", ...paths], cwd);
   if (staged.ok) return false; // exit 0 = no staged changes in scope
-  const commit = await git(["commit", "-m", message, "--", scope], cwd);
+  const commit = await git(["commit", "-m", message, "--", ...paths], cwd);
   return commit.ok;
 }

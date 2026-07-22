@@ -38,31 +38,43 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
   }
   if (uploadable.length === 0) return;
 
-  p.note(uploadable.map((file) => dim(file)).join("\n"), `${uploadable.length} file(s) to deploy`);
+  const selected =
+    uploadable.length === 1
+      ? uploadable
+      : handleCancel(
+          await p.multiselect({
+            message: "Files to deploy (space to toggle, enter to confirm)",
+            options: uploadable.map((file) => ({ value: file, label: file })),
+            initialValues: uploadable,
+            required: true,
+          })
+        );
+
+  p.note(selected.map((file) => dim(file)).join("\n"), `${selected.length} file(s) to deploy`);
 
   const message = handleCancel(
     await p.text({
       message: "Commit message",
-      initialValue: `feat(hubspot): deploy ${uploadable.length} file(s) to ${account.name}`,
+      initialValue: `feat(hubspot): deploy ${selected.length} file(s) to ${account.name}`,
       validate: (value) => (value?.trim() ? undefined : "Enter a message"),
     })
   );
 
   const confirmed = handleCancel(
-    await p.confirm({ message: `Upload ${uploadable.length} file(s) to ${account.name} (${account.accountId})?` })
+    await p.confirm({ message: `Upload ${selected.length} file(s) to ${account.name} (${account.accountId})?` })
   );
   if (!confirmed) return;
 
   const succeeded: string[] = [];
   const failed: string[] = [];
   const spinner = p.spinner();
-  for (const [index, file] of uploadable.entries()) {
+  for (const [index, file] of selected.entries()) {
     const remotePath = remotePathFor(account, file);
     if (!remotePath) {
       failed.push(file);
       continue;
     }
-    spinner.start(`[${index + 1}/${uploadable.length}] Uploading ${file}`);
+    spinner.start(`[${index + 1}/${selected.length}] Uploading ${file}`);
     const result = await runHs(["cms", "upload", join(cwd, file), remotePath], {
       accountId: account.accountId,
       cwd,
@@ -84,7 +96,8 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
   }
 
   const status = failed.length === 0 ? "success" : "partial";
-  const committed = await commitScoped(cwd, scope, message);
+  // Commit only the uploaded files so unselected (or failed) changes stay in the tree.
+  const committed = await commitScoped(cwd, succeeded, message);
   if (committed) {
     p.log.success(`Committed: ${message}`);
   } else {
