@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import * as p from "@clack/prompts";
+import { countLocalFiles, renderFetchComplete, renderFetchProgress } from "../fetch-progress.js";
 import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { streamHs } from "../hs/runner.js";
@@ -44,8 +45,9 @@ export async function fetchRemotePath(account: HsAccount, remotePath: string, cw
     p.log.error(error instanceof Error ? error.message : String(error));
     return false;
   }
+  const localBaseline = await countLocalFiles(localDir);
   const spinner = p.spinner();
-  spinner.start(`Downloading ${remotePath}`);
+  spinner.start(`Downloading ${remotePath} ${dim(renderFetchProgress(0, localBaseline))}`);
 
   let files = 0;
   const errors: string[] = [];
@@ -57,7 +59,7 @@ export async function fetchRemotePath(account: HsAccount, remotePath: string, cw
     const line = stripAnsi(raw);
     if (/^Wrote file /.test(line)) {
       files++;
-      spinner.message(`Downloading ${remotePath} ${dim(`· ${files} file(s)`)}`);
+      spinner.message(`Downloading ${remotePath} ${dim(renderFetchProgress(files, localBaseline))}`);
     } else if (/\b(error|failed|failure)\b/i.test(line)) {
       errors.push(line);
     }
@@ -67,7 +69,8 @@ export async function fetchRemotePath(account: HsAccount, remotePath: string, cw
 
   const result = await child;
   if (result.exitCode === 0) {
-    spinner.stop(`Downloaded ${remotePath} ${dim(`· ${files} file(s) → ${localDir}`)}`);
+    const localTotal = await countLocalFiles(localDir);
+    spinner.stop(`Downloaded ${remotePath} ${dim(`${renderFetchComplete(Math.max(files, localTotal))} · ${localDir}`)}`);
     const log = await loadFetchLog(cwd);
     await saveFetchLog(recordFetch(log, portalKey(account), remotePath), cwd);
     return true;
