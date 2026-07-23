@@ -50,10 +50,10 @@ async function createRepo(): Promise<{ cwd: string; first: string; second: strin
   await writeFile(first, "before", "utf8");
   await writeFile(second, "before", "utf8");
   await execa("git", ["init", "--quiet"], { cwd });
+  await execa("git", ["config", "user.name", "Test"], { cwd });
+  await execa("git", ["config", "user.email", "test@example.com"], { cwd });
   await execa("git", ["add", "."], { cwd });
-  await execa("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base", "--quiet"], {
-    cwd,
-  });
+  await execa("git", ["commit", "-m", "base", "--quiet"], { cwd });
   await writeFile(first, "uploaded", "utf8");
   await writeFile(second, "failed", "utf8");
   return { cwd, first, second };
