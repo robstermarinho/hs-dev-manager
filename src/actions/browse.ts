@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import pc from "picocolors";
 import type { HsAccount } from "../hs/accounts.js";
 import { joinRemote, listRemote, parentRemote, type RemoteEntry } from "../hs/remote-ls.js";
-import { dim, handleCancel } from "../ui.js";
+import { dim, handleCancel, menuLabel } from "../ui.js";
 
 const USE_CURRENT = "__use__";
 const GO_UP = "__up__";
@@ -11,11 +11,11 @@ const CANCEL = "__cancel__";
 function entryOption(entry: RemoteEntry): { value: string; label: string; hint?: string } {
   switch (entry.kind) {
     case "folder":
-      return { value: entry.name, label: `${pc.cyan(entry.name)}/` };
+      return { value: entry.name, label: menuLabel("folder", `${pc.cyan(entry.name)}/`) };
     case "module":
-      return { value: entry.name, label: pc.magenta(entry.name), hint: "module" };
+      return { value: entry.name, label: menuLabel("module", pc.magenta(entry.name)), hint: "module" };
     case "file":
-      return { value: entry.name, label: entry.name };
+      return { value: entry.name, label: menuLabel("file", entry.name) };
   }
 }
 
@@ -42,12 +42,12 @@ export async function browseRemotePath(account: HsAccount): Promise<string | und
         options: [
           ...(current !== "/"
             ? [
-                { value: USE_CURRENT, label: `✓ Use this path (${current})` },
-                { value: GO_UP, label: "↑ Up one level" },
+                { value: USE_CURRENT, label: menuLabel("use", `Use this path (${current})`) },
+                { value: GO_UP, label: menuLabel("up", "Up one level") },
               ]
             : []),
           ...entries.map(entryOption),
-          { value: CANCEL, label: "← Cancel" },
+          { value: CANCEL, label: menuLabel("back", "Cancel") },
         ],
       })
     );

@@ -10,7 +10,7 @@ import { changedFiles, isGitRepo } from "../git.js";
 import { localDirFor, portalScope } from "../paths.js";
 import { lastFetch, loadFetchLog, timeAgo } from "../state/fetch-log.js";
 import { loadPathsConfig, portalPaths } from "../state/paths-config.js";
-import { dim, handleCancel } from "../ui.js";
+import { dim, handleCancel, menuLabel } from "../ui.js";
 import { fetchRemotePath, portalGitState, reportDirtyPortal } from "./fetch.js";
 import { applyEvent, createWatchStats, summaryLines } from "./watch-monitor.js";
 
@@ -35,8 +35,8 @@ export async function watchAction(
     await p.select({
       message: "Which path to watch?",
       options: [
-        ...paths.map((path) => ({ value: path, label: path })),
-        { value: BACK, label: "← Back" },
+        ...paths.map((path) => ({ value: path, label: menuLabel("path", path) })),
+        { value: BACK, label: menuLabel("back", "Back") },
       ],
     })
   );

@@ -43,6 +43,36 @@ export function accent(text: string): string {
   return pc.cyan(text);
 }
 
+export const menuIcon = {
+  add: "+",
+  remove: "−",
+  list: "≡",
+  fetch: "↓",
+  watch: "~",
+  deploy: "↑",
+  history: "↺",
+  help: "?",
+  back: "←",
+  exit: "×",
+  browse: "›",
+  type: "/",
+  open: "↗",
+  path: "·",
+  all: "*",
+  use: "✓",
+  up: "↑",
+  folder: "›",
+  module: "◆",
+  file: "·",
+} as const;
+
+export type MenuIcon = keyof typeof menuIcon;
+
+/** Prefix an interactive option with a compact, terminal-safe symbol. */
+export function menuLabel(icon: MenuIcon, label: string): string {
+  return `${accent(menuIcon[icon])} ${label}`;
+}
+
 interface TreeNode {
   children: Map<string, TreeNode>;
 }

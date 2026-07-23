@@ -14,7 +14,7 @@ import {
   portalPaths,
   savePathsConfig,
 } from "../state/paths-config.js";
-import { dim, handleCancel, openUrl } from "../ui.js";
+import { dim, handleCancel, menuLabel, openUrl } from "../ui.js";
 import { browseRemotePath } from "./browse.js";
 
 export interface PortalGitState {
@@ -92,10 +92,18 @@ async function pickRemotePath(account: HsAccount): Promise<string | undefined> {
       await p.select<string>({
         message: "How do you want to pick the remote path?",
         options: [
-          { value: BROWSE, label: "Browse Design Manager", hint: "navigate remote folders via hs cms ls" },
-          { value: TYPE, label: "Type path manually", hint: "e.g. /my-theme or /marketing/templates" },
-          { value: OPEN, label: "Open Design Manager in browser", hint: dmUrl },
-          { value: BACK, label: "← Back" },
+          {
+            value: BROWSE,
+            label: menuLabel("browse", "Browse Design Manager"),
+            hint: "navigate remote folders via hs cms ls",
+          },
+          {
+            value: TYPE,
+            label: menuLabel("type", "Type path manually"),
+            hint: "e.g. /my-theme or /marketing/templates",
+          },
+          { value: OPEN, label: menuLabel("open", "Open Design Manager in browser"), hint: dmUrl },
+          { value: BACK, label: menuLabel("back", "Back") },
         ],
       })
     );
@@ -192,9 +200,9 @@ export async function fetchAction(
     await p.select({
       message: "Which path to update? (overwrites local changes)",
       options: [
-        ...paths.map((path) => ({ value: path, label: path })),
-        ...(paths.length > 1 ? [{ value: ALL, label: `All (${paths.length})` }] : []),
-        { value: BACK, label: "← Back" },
+        ...paths.map((path) => ({ value: path, label: menuLabel("path", path) })),
+        ...(paths.length > 1 ? [{ value: ALL, label: menuLabel("all", `All (${paths.length})`) }] : []),
+        { value: BACK, label: menuLabel("back", "Back") },
       ],
     })
   );

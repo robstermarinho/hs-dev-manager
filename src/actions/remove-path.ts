@@ -5,7 +5,7 @@ import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { localDirFor } from "../paths.js";
 import { loadPathsConfig, portalPaths, removePath, savePathsConfig } from "../state/paths-config.js";
-import { dim, handleCancel } from "../ui.js";
+import { dim, handleCancel, menuLabel } from "../ui.js";
 
 /** Menu action: remove a saved path from paths-config.json, optionally deleting local files. */
 export async function removePathAction(account: HsAccount, cwd: string = process.cwd()): Promise<void> {
@@ -23,8 +23,8 @@ export async function removePathAction(account: HsAccount, cwd: string = process
     await p.select({
       message: "Which path to remove?",
       options: [
-        ...paths.map((path) => ({ value: path, label: path })),
-        { value: BACK, label: "← Back" },
+        ...paths.map((path) => ({ value: path, label: menuLabel("path", path) })),
+        { value: BACK, label: menuLabel("back", "Back") },
       ],
     })
   );

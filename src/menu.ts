@@ -13,7 +13,7 @@ import { checkHsCli, hsInstallHint } from "./hs/version.js";
 import { latestSelfVersion, selfUpdateHint } from "./self-version.js";
 import { loadLastPortalId, saveLastPortalId } from "./state/last-portal.js";
 import { loadPathsConfig, portalPaths } from "./state/paths-config.js";
-import { accent, dim, fail, handleCancel, renderTree } from "./ui.js";
+import { accent, dim, fail, handleCancel, menuLabel, renderTree } from "./ui.js";
 
 const ADD_PORTAL = Symbol("add-portal");
 
@@ -48,7 +48,7 @@ export async function selectPortal(
                 ? `${account.accountId} · default`
                 : account.accountId,
         })),
-        { value: ADD_PORTAL, label: "+ Add portal", hint: "authenticate a new HubSpot account" },
+        { value: ADD_PORTAL, label: menuLabel("add", "Add portal"), hint: "authenticate a new HubSpot account" },
       ],
       initialValue: last ?? accounts.find((a) => a.isDefault) ?? accounts[0],
     })
@@ -92,18 +92,38 @@ async function mainMenu(portal: HsAccount): Promise<MenuAction> {
       message: `Portal ${accent(portal.name)} ${dim(`(${portal.accountId})`)}`,
       options: [
         // Paths
-        { value: "configure" as const, label: "Configure new path", hint: "download a remote path from HubSpot" },
-        { value: "remove" as const, label: "Remove saved path", hint: "unregister a path, optionally delete local files" },
-        { value: "list" as const, label: "List saved paths", hint: "show saved paths for this portal" },
+        {
+          value: "configure" as const,
+          label: menuLabel("add", "Configure new path"),
+          hint: "download a remote path from HubSpot",
+        },
+        {
+          value: "remove" as const,
+          label: menuLabel("remove", "Remove saved path"),
+          hint: "unregister a path, optionally delete local files",
+        },
+        {
+          value: "list" as const,
+          label: menuLabel("list", "List saved paths"),
+          hint: "show saved paths for this portal",
+        },
         // Sync & deploy
-        { value: "fetch" as const, label: "Fetch / update local", hint: "re-download with --overwrite" },
-        { value: "watch" as const, label: "Watch", hint: "auto-sync on save" },
-        { value: "deploy" as const, label: "Deploy", hint: "upload changes + git commit" },
-        { value: "history" as const, label: "Deploy history", hint: "view past deploys (read-only)" },
+        {
+          value: "fetch" as const,
+          label: menuLabel("fetch", "Fetch / update local"),
+          hint: "re-download with --overwrite",
+        },
+        { value: "watch" as const, label: menuLabel("watch", "Watch"), hint: "auto-sync on save" },
+        { value: "deploy" as const, label: menuLabel("deploy", "Deploy"), hint: "upload changes + git commit" },
+        {
+          value: "history" as const,
+          label: menuLabel("history", "Deploy history"),
+          hint: "view past deploys (read-only)",
+        },
         // Session
-        { value: "helper" as const, label: "Help", hint: "quick-start guide" },
-        { value: "portal" as const, label: "← Back" },
-        { value: "exit" as const, label: "Exit" },
+        { value: "helper" as const, label: menuLabel("help", "Help"), hint: "quick-start guide" },
+        { value: "portal" as const, label: menuLabel("back", "Back") },
+        { value: "exit" as const, label: menuLabel("exit", "Exit") },
       ],
     })
   );
