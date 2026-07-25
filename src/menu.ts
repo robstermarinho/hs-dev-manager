@@ -13,6 +13,7 @@ import { checkHsCli, hsInstallHint } from "./hs/version.js";
 import { latestSelfVersion, selfUpdateHint } from "./self-version.js";
 import { loadLastPortalId, saveLastPortalId } from "./state/last-portal.js";
 import { loadPathsConfig, portalPaths } from "./state/paths-config.js";
+import { renderBanner } from "./banner.js";
 import { accent, dim, fail, handleCancel, menuLabel, renderTree } from "./ui.js";
 
 const ADD_PORTAL = Symbol("add-portal");
@@ -131,7 +132,8 @@ export async function mainMenu(portal: HsAccount): Promise<MenuAction> {
 }
 
 export async function runApp(): Promise<void> {
-  p.intro(pc.bgCyan(pc.black(" hubspot-dev-manager ")));
+  const banner = renderBanner().replaceAll("\n", `\n${pc.gray("│")}  `);
+  p.intro(banner);
 
   // Kick off the self-update lookup now; awaited (already resolved by then) after account discovery.
   const selfLatest = latestSelfVersion();
