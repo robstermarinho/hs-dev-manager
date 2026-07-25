@@ -16,7 +16,7 @@ const options = {
   packages: "external",
   platform: "node",
   format: "esm",
-  target: "node20",
+  target: "node22",
   outdir: "dist",
   entryNames: "[name]",
   chunkNames: "chunks/[name]-[hash]",

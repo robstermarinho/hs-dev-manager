@@ -4,7 +4,7 @@ Interactive CLI for fetching, watching, and deploying HubSpot Design Manager fil
 
 ## Requirements
 
-- Node.js 20 or newer
+- Node.js 22 or newer
 - HubSpot CLI 8.x
 - At least one authenticated HubSpot account
 - Git for deploy detection and automatic sync commits
@@ -77,7 +77,7 @@ Useful scripts:
 - `npm run lint` — run ESLint
 - `npm run typecheck` — run TypeScript without emitting files
 - `npm test` — run the Vitest suite once
-- `npm run build` — build the Node 20 ESM bundle in `dist/`
+- `npm run build` — build the Node 22 ESM bundle in `dist/`
 
 ## License
 

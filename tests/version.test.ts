@@ -9,7 +9,7 @@ import {
 describe("parseHsVersion", () => {
   it("extracts a semver from noisy output", () => {
     expect(parseHsVersion("8.4.0")).toBe("8.4.0");
-    expect(parseHsVersion("hs version 8.4.0 (node 20)")).toBe("8.4.0");
+    expect(parseHsVersion("hs version 8.4.0 (node 24)")).toBe("8.4.0");
   });
 
   it("returns undefined when no version present", () => {
