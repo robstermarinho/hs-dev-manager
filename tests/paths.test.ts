@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localDirFor, portalScope, remotePathFor } from "../src/paths.js";
+import { hubspotPortalUrls, localDirFor, portalScope, remotePathFor } from "../src/paths.js";
 import type { HsAccount } from "../src/hs/accounts.js";
 
 const account: HsAccount = { name: "alpha", accountId: "111", isDefault: false };
@@ -17,6 +17,18 @@ describe("localDirFor", () => {
 describe("portalScope", () => {
   it("scopes to the portal dir", () => {
     expect(portalScope(account)).toBe("src/alpha-111");
+  });
+});
+
+describe("hubspotPortalUrls", () => {
+  it("builds portal-scoped links for the HubSpot app", () => {
+    expect(hubspotPortalUrls(account)).toEqual({
+      designManager: "https://app.hubspot.com/design-manager/111",
+      websites: "https://app.hubspot.com/website/111/pages/site",
+      hubdb: "https://app.hubspot.com/hubdb/111",
+      settings: "https://app.hubspot.com/settings/111",
+      files: "https://app.hubspot.com/files/111",
+    });
   });
 });
 

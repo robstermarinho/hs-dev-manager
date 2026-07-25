@@ -58,6 +58,7 @@ describe("mainMenu", () => {
       "~ Watch",
       "↑ Deploy",
       "↺ Deploy history",
+      "↗ Open HubSpot",
       "? Help",
       "← Back",
       "× Exit",

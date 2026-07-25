@@ -4,6 +4,7 @@ import { deployAction } from "./actions/deploy.js";
 import { configurePathAction, fetchAction } from "./actions/fetch.js";
 import { helperAction } from "./actions/helper.js";
 import { historyAction } from "./actions/history.js";
+import { portalLinksAction } from "./actions/portal-links.js";
 import { addPortalAction } from "./actions/portal.js";
 import { removePathAction } from "./actions/remove-path.js";
 import { offerHsUpgrade } from "./actions/upgrade.js";
@@ -24,6 +25,7 @@ export type MenuAction =
   | "watch"
   | "deploy"
   | "history"
+  | "links"
   | "remove"
   | "list"
   | "portal"
@@ -122,6 +124,11 @@ export async function mainMenu(portal: HsAccount): Promise<MenuAction> {
           hint: "view past deploys (read-only)",
         },
         // Session
+        {
+          value: "links" as const,
+          label: menuLabel("open", "Open HubSpot"),
+          hint: "Design Manager, websites, HubDB, settings, files",
+        },
         { value: "helper" as const, label: menuLabel("help", "Help"), hint: "quick-start guide" },
         { value: "portal" as const, label: menuLabel("back", "Back") },
         { value: "exit" as const, label: menuLabel("exit", "Exit") },
@@ -178,6 +185,9 @@ export async function runApp(): Promise<void> {
         break;
       case "history":
         await historyAction(portal);
+        break;
+      case "links":
+        await portalLinksAction(portal);
         break;
       case "remove":
         await removePathAction(portal);

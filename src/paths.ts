@@ -22,6 +22,24 @@ export function designManagerUrl(account: HsAccount): string {
   return `https://app.hubspot.com/design-manager/${account.accountId}`;
 }
 
+/** Direct HubSpot app URLs scoped to a portal. */
+export function hubspotPortalUrls(account: HsAccount): {
+  designManager: string;
+  websites: string;
+  hubdb: string;
+  settings: string;
+  files: string;
+} {
+  const portalId = account.accountId;
+  return {
+    designManager: designManagerUrl(account),
+    websites: `https://app.hubspot.com/website/${portalId}/pages/site`,
+    hubdb: `https://app.hubspot.com/hubdb/${portalId}`,
+    settings: `https://app.hubspot.com/settings/${portalId}`,
+    files: `https://app.hubspot.com/files/${portalId}`,
+  };
+}
+
 /** Local directory for a remote path: ./src/{portal-name}-{id}/{remote-path} (sh-compatible layout). */
 export function localDirFor(account: HsAccount, remotePath: string, cwd: string): string {
   const portalRoot = resolve(cwd, LOCAL_ROOT, portalDirectoryName(account));

@@ -25,6 +25,7 @@ That's the gap this tool fills. While we wait, in the spirit of "no rush, HubSpo
 - **Saved remote paths per portal:** Configure a Design Manager path once, reuse it forever. No more retyping `/Marketing/Themes/...` from memory.
 - **Guardrails around destructive syncs:** Fetch refuses to overwrite uncommitted work, and every clean sync becomes a scoped Git commit. Your history knows exactly what came from where.
 - **A deploy flow that asks first:** Pick the changed files to upload, get a commit containing only what actually shipped.
+- **Portal-scoped HubSpot shortcuts:** Open Design Manager, website pages, HubDB, settings, or files for the selected portal.
 - **One menu instead of seven flags:** Arrow keys, not man pages.
 
 If you manage a single portal, the official CLI is probably all you need. If you manage several, this is the tool we wished existed, so we built it.
