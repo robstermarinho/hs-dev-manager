@@ -17,7 +17,7 @@ import { accent, dim, fail, handleCancel, menuLabel, renderTree } from "./ui.js"
 
 const ADD_PORTAL = Symbol("add-portal");
 
-type MenuAction =
+export type MenuAction =
   | "configure"
   | "fetch"
   | "watch"
@@ -86,7 +86,7 @@ async function listPathsAction(portal: HsAccount, cwd: string = process.cwd()): 
   p.note(renderTree(paths), `Saved paths · ${accent(portal.name)}`);
 }
 
-async function mainMenu(portal: HsAccount): Promise<MenuAction> {
+export async function mainMenu(portal: HsAccount): Promise<MenuAction> {
   const action = handleCancel(
     await p.select({
       message: `Portal ${accent(portal.name)} ${dim(`(${portal.accountId})`)}`,
