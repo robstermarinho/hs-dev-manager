@@ -6,10 +6,6 @@
 [![npm version](https://img.shields.io/npm/v/hs-dev-manager)](https://www.npmjs.com/package/hs-dev-manager)
 [![node](https://img.shields.io/node/v/hs-dev-manager)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/hs-dev-manager)](./LICENSE)
-[![types](https://img.shields.io/badge/types-TypeScript-blue)](https://www.typescriptlang.org/)
-[![downloads](https://img.shields.io/npm/dm/hs-dev-manager)](https://www.npmjs.com/package/hs-dev-manager)
-[![install size](https://packagephobia.com/badge?p=hs-dev-manager)](https://packagephobia.com/result?p=hs-dev-manager)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robstermarinho/hs-dev-manager/pulls)
 
 Interactive CLI for fetching, watching, and deploying HubSpot Design Manager files across multiple accounts.
 
