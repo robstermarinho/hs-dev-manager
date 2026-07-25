@@ -68,6 +68,22 @@ Run `hsdm` from the root of the Git repository where HubSpot files should live.
 
 The CLI remembers the last selected account and the remote paths configured for each account.
 
+## What it looks like
+
+Every session starts by picking the portal you are about to touch, so "which account am I on?" stops being a question you answer from memory:
+
+<p align="center">
+  <img src="assets/screenshot-portals.png" alt="Portal selection listing authenticated HubSpot accounts, with the last used one marked" width="720">
+</p>
+
+From there, every action is scoped to that portal until you switch:
+
+<p align="center">
+  <img src="assets/screenshot-menu.png" alt="Main menu showing path, sync, and session actions for the selected portal" width="720">
+</p>
+
+Account names and IDs above are fictional.
+
 ## Safety behavior
 
 - Fetch operations use HubSpot's `--overwrite` option and are blocked when the selected account's local scope contains uncommitted changes.
