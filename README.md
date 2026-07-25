@@ -1,6 +1,33 @@
-# hubspot-dev-manager
+<p align="center">
+  <img src="assets/banner.png" alt="HS Dev Manager" width="680">
+</p>
+
+[![CI](https://github.com/robstermarinho/hs-dev-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/robstermarinho/hs-dev-manager/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/hs-dev-manager)](https://www.npmjs.com/package/hs-dev-manager)
+[![node](https://img.shields.io/node/v/hs-dev-manager)](https://nodejs.org)
+[![license](https://img.shields.io/npm/l/hs-dev-manager)](./LICENSE)
+[![types](https://img.shields.io/badge/types-TypeScript-blue)](https://www.typescriptlang.org/)
+[![downloads](https://img.shields.io/npm/dm/hs-dev-manager)](https://www.npmjs.com/package/hs-dev-manager)
+[![install size](https://packagephobia.com/badge?p=hs-dev-manager)](https://packagephobia.com/result?p=hs-dev-manager)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/robstermarinho/hs-dev-manager/pulls)
 
 Interactive CLI for fetching, watching, and deploying HubSpot Design Manager files across multiple accounts.
+
+> **Not an official HubSpot product.** This project is not affiliated with, endorsed by, or supported by HubSpot, Inc. It is a community tool that wraps the official [HubSpot CLI](https://www.npmjs.com/package/@hubspot/cli). "HubSpot" is a trademark of HubSpot, Inc., used here only to describe compatibility.
+
+## Why this package?
+
+The official `hs` CLI is a fine tool, genuinely. But it was clearly designed with one portal in mind, and some of us live a different life: five client portals before lunch, each with its own Design Manager tree, and a strong desire not to `hs account use` our way into deploying the wrong theme to the wrong customer.
+
+That's the gap this tool fills. While we wait, in the spirit of "no rush, HubSpot, we know you're busy," `hsdm` gives you:
+
+- **Portals as a first-class concept:** Pick an account from a menu, and every fetch, watch, and deploy is scoped to it. Files land in `src/{account}-{id}/`, so two portals never collide.
+- **Saved remote paths per portal:** Configure a Design Manager path once, reuse it forever. No more retyping `/Marketing/Themes/...` from memory.
+- **Guardrails around destructive syncs:** Fetch refuses to overwrite uncommitted work, and every clean sync becomes a scoped Git commit. Your history knows exactly what came from where.
+- **A deploy flow that asks first:** Pick the changed files to upload, get a commit containing only what actually shipped.
+- **One menu instead of seven flags:** Arrow keys, not man pages.
+
+If you manage a single portal, the official CLI is probably all you need. If you manage several, this is the tool we wished existed, so we built it.
 
 ## Requirements
 
@@ -19,7 +46,7 @@ hs account auth
 ## Install
 
 ```bash
-npm install --global hubspot-dev-manager
+npm install --global hs-dev-manager
 ```
 
 Both executable names are equivalent:
@@ -73,11 +100,11 @@ npm pack --dry-run
 
 Useful scripts:
 
-- `npm run dev` — rebuild on source changes
-- `npm run lint` — run ESLint
-- `npm run typecheck` — run TypeScript without emitting files
-- `npm test` — run the Vitest suite once
-- `npm run build` — build the Node 22 ESM bundle in `dist/`
+- `npm run dev`: Rebuild on source changes
+- `npm run lint`: Run ESLint
+- `npm run typecheck`: Run TypeScript without emitting files
+- `npm test`: Run the Vitest suite once
+- `npm run build`: Build the Node 22 ESM bundle in `dist/`
 
 ## License
 

@@ -1,5 +1,5 @@
 {
-  "name": "hubspot-dev-manager",
+  "name": "hs-dev-manager",
   "version": "0.1.0",
   "description": "Interactive CLI for safely managing HubSpot Design Manager files across multiple accounts",
   "type": "module",
@@ -36,11 +36,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/robstermarinho/hubspot-dev-manager.git"
+    "url": "git+https://github.com/robstermarinho/hs-dev-manager.git"
   },
-  "homepage": "https://github.com/robstermarinho/hubspot-dev-manager#readme",
+  "homepage": "https://github.com/robstermarinho/hs-dev-manager#readme",
   "bugs": {
-    "url": "https://github.com/robstermarinho/hubspot-dev-manager/issues"
+    "url": "https://github.com/robstermarinho/hs-dev-manager/issues"
   },
   "publishConfig": {
     "access": "public"
