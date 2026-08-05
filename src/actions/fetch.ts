@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import * as p from "@clack/prompts";
 import { countLocalFiles, renderFetchComplete, renderFetchProgress } from "../fetch-progress.js";
@@ -6,8 +8,15 @@ import { portalKey } from "../hs/accounts.js";
 import { streamHs } from "../hs/runner.js";
 import { stripAnsi } from "../hs/watch-parser.js";
 import { changedFiles, commitScoped, isGitRepo } from "../git.js";
-import { designManagerUrl, localDirFor, portalScope } from "../paths.js";
+import { designManagerUrl, localDirFor, portalScope, remotePathFor } from "../paths.js";
 import { loadFetchLog, recordFetch, saveFetchLog } from "../state/fetch-log.js";
+import {
+  loadRemoteState,
+  recordRemoteFiles,
+  saveRemoteState,
+  sha256,
+  type RemoteFileHash,
+} from "../state/remote-state.js";
 import {
   addPath,
   loadPathsConfig,
@@ -36,6 +45,31 @@ export function reportDirtyPortal(state: PortalGitState): void {
   if (state.dirty.length > 10) p.log.message(dim(`  … and ${state.dirty.length - 10} more`));
 }
 
+/**
+ * Remember the content just downloaded: it is, by definition, the current remote
+ * content, so a later deploy can tell HubSpot-side edits from our own.
+ */
+async function recordSyncedFetch(account: HsAccount, writtenPaths: string[], cwd: string): Promise<void> {
+  const entries: RemoteFileHash[] = [];
+  for (const written of writtenPaths) {
+    const absolute = resolve(cwd, written);
+    const remotePath = remotePathFor(account, relative(cwd, absolute).replaceAll("\\", "/"));
+    if (!remotePath) continue;
+    try {
+      entries.push({ remotePath, sha256: sha256(await readFile(absolute)) });
+    } catch {
+      // Unreadable file: leave it unrecorded, it just stays unverified on deploy.
+    }
+  }
+  if (entries.length === 0) return;
+  try {
+    const state = await loadRemoteState(cwd);
+    await saveRemoteState(recordRemoteFiles(state, portalKey(account), entries), cwd);
+  } catch (error) {
+    p.log.warn(`Could not record the remote sync state: ${error instanceof Error ? error.message : error}`);
+  }
+}
+
 /** Download one remote path with a live file counter; records the fetch time on success. */
 export async function fetchRemotePath(account: HsAccount, remotePath: string, cwd: string): Promise<boolean> {
   let localDir: string;
@@ -50,6 +84,7 @@ export async function fetchRemotePath(account: HsAccount, remotePath: string, cw
   spinner.start(`Downloading ${remotePath} ${dim(renderFetchProgress(0, localBaseline))}`);
 
   let files = 0;
+  const written: string[] = [];
   const errors: string[] = [];
   const child = streamHs(["cms", "fetch", remotePath, localDir, "--overwrite"], {
     accountId: account.accountId,
@@ -57,8 +92,10 @@ export async function fetchRemotePath(account: HsAccount, remotePath: string, cw
   });
   const handleLine = (raw: string): void => {
     const line = stripAnsi(raw);
-    if (/^Wrote file /.test(line)) {
+    const wrote = line.match(/^Wrote file (.+)$/);
+    if (wrote?.[1]) {
       files++;
+      written.push(wrote[1].trim());
       spinner.message(`Downloading ${remotePath} ${dim(renderFetchProgress(files, localBaseline))}`);
     } else if (/\b(error|failed|failure)\b/i.test(line)) {
       errors.push(line);
@@ -73,6 +110,7 @@ export async function fetchRemotePath(account: HsAccount, remotePath: string, cw
     spinner.stop(`Downloaded ${remotePath} ${dim(`${renderFetchComplete(Math.max(files, localTotal))} · ${localDir}`)}`);
     const log = await loadFetchLog(cwd);
     await saveFetchLog(recordFetch(log, portalKey(account), remotePath), cwd);
+    await recordSyncedFetch(account, written, cwd);
     return true;
   }
   spinner.stop(`Failed to download ${remotePath}`, 1);
