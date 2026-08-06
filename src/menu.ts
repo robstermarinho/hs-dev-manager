@@ -96,7 +96,7 @@ export async function mainMenu(portal: HsAccount): Promise<MenuAction> {
         {
           value: "fetch" as const,
           label: menuLabel("fetch", "Fetch / update local"),
-          hint: "re-download with --overwrite",
+          hint: "see what changed on HubSpot",
         },
         { value: "watch" as const, label: menuLabel("watch", "Watch"), hint: "auto-sync on save" },
         {
