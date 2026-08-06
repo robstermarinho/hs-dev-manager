@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseWatchLine, stripAnsi } from "../src/hs/watch-parser.js";
-import { applyEvent, createWatchStats, shortenPath, summaryLines } from "../src/actions/watch-monitor.js";
+import { applyEvent, createWatchStats, stripRoot, summaryLines } from "../src/actions/watch-monitor.js";
 
 describe("parseWatchLine", () => {
   it("parses the ready line", () => {
@@ -45,15 +45,15 @@ describe("parseWatchLine", () => {
   });
 });
 
-describe("shortenPath", () => {
+describe("stripRoot", () => {
   it("strips the watched root prefix", () => {
-    expect(shortenPath("/example-theme/modules/hero.module/module.html", "/example-theme")).toBe(
+    expect(stripRoot("/example-theme/modules/hero.module/module.html", "/example-theme")).toBe(
       "modules/hero.module/module.html"
     );
   });
 
   it("returns the path without leading slash when no root matches", () => {
-    expect(shortenPath("/other/x.html", "/example-theme")).toBe("other/x.html");
+    expect(stripRoot("/other/x.html", "/example-theme")).toBe("other/x.html");
   });
 });
 

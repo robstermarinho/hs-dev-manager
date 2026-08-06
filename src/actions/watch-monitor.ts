@@ -19,7 +19,7 @@ function clock(date: Date = new Date()): string {
 }
 
 /** Drop a watched-root prefix so uploaded paths read short (e.g. modules/x.html). */
-export function shortenPath(remotePath: string, root?: string): string {
+export function stripRoot(remotePath: string, root?: string): string {
   let path = remotePath;
   if (root && path.startsWith(root)) path = path.slice(root.length);
   return path.replace(/^\/+/, "");
@@ -36,11 +36,11 @@ export function applyEvent(stats: WatchStats, event: WatchEvent, root?: string):
       stats.uploaded++;
       stats.files.add(event.remotePath);
       const counter = pc.dim(`[↑${stats.uploaded}]`);
-      return `${time} ${pc.green("✓")} ${counter} ${shortenPath(event.remotePath, root)}`;
+      return `${time} ${pc.green("✓")} ${counter} ${stripRoot(event.remotePath, root)}`;
     }
     case "deleted": {
       stats.deleted++;
-      return `${time} ${pc.yellow("−")} ${pc.dim("[del]")} ${shortenPath(event.remotePath, root)}`;
+      return `${time} ${pc.yellow("−")} ${pc.dim("[del]")} ${stripRoot(event.remotePath, root)}`;
     }
     case "error": {
       stats.errors++;
