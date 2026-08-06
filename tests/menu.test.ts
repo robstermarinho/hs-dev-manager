@@ -51,9 +51,7 @@ describe("mainMenu", () => {
     const prompt = prompts.select.mock.calls[0]![0];
     expect(stripAnsi(prompt.message)).toBe("Portal alpha (111111)");
     expect(prompt.options.map((option: { label: string }) => stripAnsi(option.label))).toEqual([
-      "+ Configure new path",
-      "− Remove saved path",
-      "≡ List saved paths",
+      "≡ Paths",
       "↓ Fetch / update local",
       "~ Watch",
       "✔ Lint local files",

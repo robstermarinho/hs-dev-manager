@@ -1,35 +1,32 @@
 import * as p from "@clack/prompts";
 import pc from "picocolors";
 import { deployAction } from "./actions/deploy.js";
-import { configurePathAction, fetchAction } from "./actions/fetch.js";
+import { fetchAction } from "./actions/fetch.js";
 import { helperAction } from "./actions/helper.js";
 import { historyAction } from "./actions/history.js";
 import { lintAction } from "./actions/lint.js";
+import { pathsAction } from "./actions/paths-menu.js";
 import { portalLinksAction } from "./actions/portal-links.js";
 import { addPortalAction } from "./actions/portal.js";
-import { removePathAction } from "./actions/remove-path.js";
 import { offerHsUpgrade } from "./actions/upgrade.js";
 import { watchAction } from "./actions/watch.js";
-import { discoverAccounts, portalKey, type AccountsResult, type HsAccount } from "./hs/accounts.js";
+import { discoverAccounts, type AccountsResult, type HsAccount } from "./hs/accounts.js";
 import { checkHsCli, hsInstallHint } from "./hs/version.js";
 import { latestSelfVersion, selfUpdateHint, SELF_PACKAGE, SELF_VERSION } from "./self-version.js";
 import { loadLastPortalId, saveLastPortalId } from "./state/last-portal.js";
-import { loadPathsConfig, portalPaths } from "./state/paths-config.js";
 import { renderBanner } from "./banner.js";
-import { accent, dim, fail, handleCancel, menuLabel, renderTree } from "./ui.js";
+import { accent, dim, fail, handleCancel, menuLabel } from "./ui.js";
 
 const ADD_PORTAL = Symbol("add-portal");
 
 export type MenuAction =
-  | "configure"
+  | "paths"
   | "fetch"
   | "watch"
   | "lint"
   | "deploy"
   | "history"
   | "links"
-  | "remove"
-  | "list"
   | "portal"
   | "helper"
   | "exit";
@@ -84,13 +81,6 @@ async function pickPortal(discovered: AccountsResult): Promise<HsAccount> {
   }
 }
 
-/** Menu action: show the current portal's saved paths as a tree. */
-async function listPathsAction(portal: HsAccount, cwd: string = process.cwd()): Promise<void> {
-  const config = await loadPathsConfig(cwd);
-  const paths = portalPaths(config, portalKey(portal));
-  p.note(renderTree(paths), `Saved paths · ${accent(portal.name)}`);
-}
-
 export async function mainMenu(portal: HsAccount): Promise<MenuAction> {
   const action = handleCancel(
     await p.select({
@@ -98,19 +88,9 @@ export async function mainMenu(portal: HsAccount): Promise<MenuAction> {
       options: [
         // Paths
         {
-          value: "configure" as const,
-          label: menuLabel("add", "Configure new path"),
-          hint: "download a remote path from HubSpot",
-        },
-        {
-          value: "remove" as const,
-          label: menuLabel("remove", "Remove saved path"),
-          hint: "unregister a path, optionally delete local files",
-        },
-        {
-          value: "list" as const,
-          label: menuLabel("list", "List saved paths"),
-          hint: "show saved paths for this portal",
+          value: "paths" as const,
+          label: menuLabel("list", "Paths"),
+          hint: "list, add or remove the paths this portal tracks",
         },
         // Sync & deploy
         {
@@ -178,8 +158,8 @@ export async function runApp(): Promise<void> {
     const action = await mainMenu(portal);
 
     switch (action) {
-      case "configure":
-        await configurePathAction(portal);
+      case "paths":
+        await pathsAction(portal);
         break;
       case "fetch":
         await fetchAction(portal);
@@ -198,12 +178,6 @@ export async function runApp(): Promise<void> {
         break;
       case "links":
         await portalLinksAction(portal);
-        break;
-      case "remove":
-        await removePathAction(portal);
-        break;
-      case "list":
-        await listPathsAction(portal);
         break;
       case "helper":
         await helperAction();
