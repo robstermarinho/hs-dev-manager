@@ -19,7 +19,14 @@ import {
 import { lastFetch, loadFetchLog, timeAgo } from "../state/fetch-log.js";
 import { loadPathsConfig, portalPaths } from "../state/paths-config.js";
 import { dim, handleCancel, menuLabel } from "../ui.js";
-import { destinationFor, driftTargets, fetchRemotePath, portalGitState, reportDirtyPortal } from "./fetch.js";
+import {
+  destinationFor,
+  driftTargets,
+  fetchRemotePath,
+  markPathSynced,
+  portalGitState,
+  reportDirtyPortal,
+} from "./fetch.js";
 import { computeRemoteStatus } from "./remote-status.js";
 import { applyEvent, createWatchStats, summaryLines } from "./watch-monitor.js";
 
@@ -131,11 +138,15 @@ async function syncBeforeWatch(account: HsAccount, remotePath: string, cwd: stri
   if (choice === BACK) return false;
   if (choice === SKIP) return true;
   if (choice === FULL) return runSync(account, cwd, [{ remotePath }]);
-  return runSync(
+
+  const synced = await runSync(
     account,
     cwd,
     targets.map((item) => ({ remotePath: item.path, destination: destinationFor(account, item, cwd) }))
   );
+  // The targeted download covered every flagged asset, so the path is current.
+  if (synced) await markPathSynced(account, remotePath, cwd);
+  return synced;
 }
 
 /** Menu action: watch a saved path and live-sync local edits to HubSpot. */

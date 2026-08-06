@@ -43,6 +43,7 @@ import { configurePathAction, fetchAction } from "../src/actions/fetch.js";
 import type { HsAccount } from "../src/hs/accounts.js";
 import { changedFiles } from "../src/git.js";
 import { driftTargets } from "../src/actions/fetch.js";
+import { lastFetch, loadFetchLog } from "../src/state/fetch-log.js";
 import { addPath, savePathsConfig } from "../src/state/paths-config.js";
 
 const account: HsAccount = { name: "example", accountId: "123456", isDefault: true };
@@ -219,6 +220,23 @@ describe("fetchAction", () => {
       destination: join(cwd, "src", "example-123456", "theme", "modules", "hero.module"),
     });
     expect(prompts.success).toHaveBeenCalledWith("2 asset(s) updated");
+
+    // The path is current again, so its age must not still point at the last
+    // full re-download.
+    expect(lastFetch(await loadFetchLog(cwd), "example-123456", "/theme")).toBeInstanceOf(Date);
+  });
+
+  it("leaves the path age alone when a targeted download fails", async () => {
+    const { cwd } = await createRepo();
+    remote.computeRemoteStatus.mockResolvedValue({
+      changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
+      added: [],
+    });
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("targeted");
+
+    await fetchAction(account, cwd, vi.fn().mockResolvedValue(false));
+
+    expect(lastFetch(await loadFetchLog(cwd), "example-123456", "/theme")).toBeUndefined();
   });
 
   it("goes straight to a full re-download when the path has no drift", async () => {

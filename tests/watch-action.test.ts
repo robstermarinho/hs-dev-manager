@@ -49,6 +49,7 @@ vi.mock("../src/git.js", async (importOriginal) => {
 
 import { watchAction } from "../src/actions/watch.js";
 import type { HsAccount } from "../src/hs/accounts.js";
+import { lastFetch, loadFetchLog } from "../src/state/fetch-log.js";
 import { addPath, savePathsConfig } from "../src/state/paths-config.js";
 
 const account: HsAccount = { name: "example", accountId: "123456", isDefault: true };
@@ -143,6 +144,19 @@ describe("watchAction", () => {
       "chore(hubspot): sync /theme/main.css from example"
     );
     expect(mocks.streamHs).toHaveBeenCalled();
+  });
+
+  it("marks the watched path as current after a targeted sync", async () => {
+    const cwd = await workspace();
+    mocks.computeRemoteStatus.mockResolvedValue({
+      changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
+      added: [],
+    });
+    mocks.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("targeted");
+
+    await watchAction(account, cwd);
+
+    expect(lastFetch(await loadFetchLog(cwd), "example-123456", "/theme")).toBeInstanceOf(Date);
   });
 
   it("can start watching anyway with a stale local copy", async () => {

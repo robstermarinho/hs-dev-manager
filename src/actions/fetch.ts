@@ -156,6 +156,22 @@ export async function fetchRemotePath(
 
 export type FetchRemoteFn = typeof fetchRemotePath;
 
+/**
+ * Record a saved path as current even though only part of it was downloaded.
+ *
+ * A targeted download covers every asset the remote check flagged, so once it
+ * succeeds the path does match HubSpot — without this, its "last fetch" age
+ * would keep pointing at the last full re-download.
+ */
+export async function markPathSynced(account: HsAccount, remotePath: string, cwd: string): Promise<void> {
+  try {
+    const log = await loadFetchLog(cwd);
+    await saveFetchLog(recordFetch(log, portalKey(account), remotePath), cwd);
+  } catch {
+    // The age hint is cosmetic; never fail a good download over it.
+  }
+}
+
 /** Ask for a remote path by browsing the Design Manager or typing it. */
 async function pickRemotePath(account: HsAccount): Promise<string | undefined> {
   const BROWSE = "browse";
@@ -399,6 +415,8 @@ export async function fetchAction(
   const noun = targeted ? "asset" : "path";
   if (failures === 0) {
     p.log.success(`${jobs.length} ${noun}(s) updated`);
+    // Every flagged asset came down, so the path as a whole is current again.
+    if (targeted) await markPathSynced(account, choice, cwd);
   } else {
     p.log.warn(`${failures} of ${jobs.length} ${noun}(s) failed`);
   }
