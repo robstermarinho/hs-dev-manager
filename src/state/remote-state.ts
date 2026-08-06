@@ -60,6 +60,38 @@ export function syncedHash(state: RemoteState, portalKey: string, remotePath: st
   return typeof record?.sha256 === "string" ? record.sha256 : undefined;
 }
 
+/**
+ * Lookup of "when did we last sync this remote path", in epoch milliseconds.
+ *
+ * Records are per file, but callers also ask about containers (a module, a
+ * folder), so every record also counts for its ancestors — a module is as fresh
+ * as its newest file.
+ */
+export function syncedAtLookup(
+  state: RemoteState,
+  portalKey: string
+): (remotePath: string) => number | undefined {
+  const prefix = `${portalKey}:`;
+  const exact = new Map<string, number>();
+  const containers = new Map<string, number>();
+
+  for (const [key, record] of Object.entries(state.files)) {
+    if (!key.startsWith(prefix)) continue;
+    const remotePath = key.slice(prefix.length);
+    const time = Date.parse(record?.synced_at ?? "");
+    if (Number.isNaN(time)) continue;
+
+    exact.set(remotePath, Math.max(exact.get(remotePath) ?? 0, time));
+    const segments = remotePath.split("/");
+    for (let end = segments.length - 1; end > 1; end--) {
+      const ancestor = segments.slice(0, end).join("/");
+      containers.set(ancestor, Math.max(containers.get(ancestor) ?? 0, time));
+    }
+  }
+
+  return (remotePath: string) => exact.get(remotePath) ?? containers.get(remotePath);
+}
+
 export async function loadRemoteState(cwd: string = process.cwd()): Promise<RemoteState> {
   try {
     return parseRemoteState(await readFile(join(cwd, REMOTE_STATE_FILE), "utf8"));
