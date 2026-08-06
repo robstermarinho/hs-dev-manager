@@ -24,11 +24,19 @@ export interface ConflictInput {
   syncedHash?: string;
   /** The remote copy could not be read (listing or download failed). */
   remoteUnavailable?: boolean;
+  /**
+   * The remote modification time proves nothing happened since our last sync,
+   * so the copy did not need to be downloaded at all.
+   */
+  remoteUnchanged?: boolean;
 }
 
 export function classifyConflict(input: ConflictInput): ConflictCheck {
   if (input.remoteUnavailable) {
     return { status: "unverified", reason: "remote copy could not be read" };
+  }
+  if (input.remoteUnchanged) {
+    return { status: "safe", reason: "remote unchanged since last sync" };
   }
   if (input.remoteHash === undefined) {
     return { status: "safe", reason: "not on HubSpot yet" };

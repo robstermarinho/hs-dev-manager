@@ -33,3 +33,18 @@ describe("classifyConflict", () => {
     });
   });
 });
+
+describe("classifyConflict with the timestamp prefilter", () => {
+  it("is safe when the remote is known not to have moved", () => {
+    expect(classifyConflict({ localHash: "local", remoteUnchanged: true })).toMatchObject({
+      status: "safe",
+      reason: "remote unchanged since last sync",
+    });
+  });
+
+  it("never overrides an unreadable remote", () => {
+    expect(classifyConflict({ localHash: "a", remoteUnchanged: true, remoteUnavailable: true }).status).toBe(
+      "unverified"
+    );
+  });
+});
