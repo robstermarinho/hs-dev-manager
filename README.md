@@ -90,6 +90,31 @@ Account names and IDs above are fictional.
 
 Use a HubSpot sandbox or test account when validating a new workflow. `Watch` and `Deploy` write to the selected HubSpot account.
 
+## Network use
+
+Every HubSpot request goes through the official CLI (`hs`) and your existing personal access key. No separate credentials, no third-party service, no telemetry.
+
+Nothing is requested until you ask for it: opening the menu makes no calls at all.
+
+| When | Requests | Writes to HubSpot? |
+| --- | --- | --- |
+| Entering `Fetch / update local`, or starting a `Watch` | 2 (`hs api`, listing paths and modification times) | No |
+| Deploy, before uploading | 2 (the same listing), plus 1 download per selected file whose remote copy changed since your last sync | No |
+| Fetch, watch, deploy uploads | Whatever `hs cms fetch` / `watch` / `upload` need | Uploads only |
+| Lint, diff, deploy history | 0 | No |
+
+Entering `Fetch / update local` lists exactly what moved on HubSpot, with a per-path summary next to each saved path. Picking a path that drifted then asks how to update it: `Only what changed` downloads just that path's drifted assets, `Full re-download` fetches the whole path as before. Each saved path is treated on its own, so drift in one project never pulls another one down with it. The check is read-only and stays silent when it fails (for example when your access key lacks the required scopes) — it never claims your copy is current without knowing.
+
+`Watch` runs the same check before it starts, since watching uploads local edits: if nothing moved on HubSpot it goes straight to watching, and otherwise it offers to download what changed, re-download the whole path, or watch anyway.
+
+Deploy uses the same listing to decide which files actually need comparing: a file whose remote copy has not moved since your last sync is not downloaded at all. Anything the listing does not cover falls back to a per-folder listing and a download, so coverage gaps never turn into a silent overwrite.
+
+To skip the check entirely — in CI, or with an access key that lacks the scopes:
+
+```bash
+HSDM_NO_REMOTE_CHECK=1 hsdm
+```
+
 ## Local files
 
 | Path | Purpose |
@@ -99,8 +124,9 @@ Use a HubSpot sandbox or test account when validating a new workflow. `Watch` an
 | `.hsaccount` | Last selected account ID |
 | `db/fetch-log.json` | Successful fetch timestamps |
 | `db/deploy-history.json` | Most recent 50 deploy records |
+| `db/remote-state.json` | Content hash of each file at its last sync, used to detect edits made in Design Manager |
 
-These state formats remain compatible with the legacy shell-based workflow.
+`src/{account}-{id}/`, `paths-config.json`, `.hsaccount`, `db/fetch-log.json` and `db/deploy-history.json` remain compatible with the legacy shell-based workflow.
 
 ## Development
 
