@@ -18,6 +18,7 @@
     "build": "node scripts/build.mjs",
     "dev": "node scripts/build.mjs --watch",
     "start": "node dist/cli.js",
+    "demo": "npm run build && ./scripts/demo.sh",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
