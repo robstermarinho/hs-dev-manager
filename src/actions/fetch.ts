@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import * as p from "@clack/prompts";
@@ -6,6 +6,7 @@ import { countLocalFiles, renderFetchComplete, renderFetchProgress } from "../fe
 import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { streamHs } from "../hs/runner.js";
+import { parentRemote } from "../hs/remote-ls.js";
 import { stripAnsi } from "../hs/watch-parser.js";
 import { truncateDiff } from "../diff.js";
 import {
@@ -17,7 +18,19 @@ import {
   restoreScope,
   unstageScope,
 } from "../git.js";
+import type { RemoteItem } from "../hs/remote-inventory.js";
 import { designManagerUrl, localDirFor, portalScope, remotePathFor } from "../paths.js";
+import {
+  describePathDrift,
+  describeRemoteStatus,
+  driftByPath,
+  driftLines,
+  isRemoteCheckDisabled,
+  isUnder,
+  type PathDrift,
+  type RemoteStatus,
+} from "../remote-status.js";
+import { computeRemoteStatus } from "./remote-status.js";
 import { loadFetchLog, recordFetch, saveFetchLog } from "../state/fetch-log.js";
 import {
   loadRemoteState,
@@ -79,11 +92,25 @@ async function recordSyncedFetch(account: HsAccount, writtenPaths: string[], cwd
   }
 }
 
+export interface FetchRemoteOptions {
+  /**
+   * Where `hs cms fetch` writes. A folder or module lands inside its own local
+   * directory, but a single file is written as `<destination>/<basename>`, so
+   * the caller must pass the parent directory for those.
+   */
+  destination?: string;
+}
+
 /** Download one remote path with a live file counter; records the fetch time on success. */
-export async function fetchRemotePath(account: HsAccount, remotePath: string, cwd: string): Promise<boolean> {
+export async function fetchRemotePath(
+  account: HsAccount,
+  remotePath: string,
+  cwd: string,
+  options: FetchRemoteOptions = {}
+): Promise<boolean> {
   let localDir: string;
   try {
-    localDir = localDirFor(account, remotePath, cwd);
+    localDir = options.destination ?? localDirFor(account, remotePath, cwd);
   } catch (error) {
     p.log.error(error instanceof Error ? error.message : String(error));
     return false;
@@ -222,6 +249,61 @@ export async function configurePathAction(
   }
 }
 
+/**
+ * Assets to re-download, with a module dropping the files it already contains so
+ * nothing is fetched twice.
+ */
+export function driftTargets(status: RemoteStatus): RemoteItem[] {
+  const all = [...status.changed, ...status.added];
+  const containers = all.filter((item) => item.kind === "module").map((item) => `${item.path}/`);
+  return all.filter((item) => !containers.some((prefix) => item.path.startsWith(prefix)));
+}
+
+/** Where `hs cms fetch` should write one drifted asset. */
+export function destinationFor(account: HsAccount, item: RemoteItem, cwd: string): string {
+  // A file arrives as `<destination>/<basename>`; a module fills its own folder.
+  const target = item.kind === "file" ? parentRemote(item.path) : item.path;
+  return localDirFor(account, target, cwd);
+}
+
+/**
+ * Show what moved on HubSpot since the last sync, so the choice of what to
+ * re-download is informed instead of blind. Read-only; when it cannot be
+ * answered the fetch continues without any claim about the remote.
+ */
+interface RemoteDrift {
+  byPath: Map<string, PathDrift>;
+  targets: RemoteItem[];
+}
+
+async function reportRemoteDrift(
+  account: HsAccount,
+  paths: string[],
+  cwd: string
+): Promise<RemoteDrift | undefined> {
+  if (isRemoteCheckDisabled()) return undefined;
+
+  const spinner = p.spinner();
+  spinner.start("Checking HubSpot for changes");
+  const status = await computeRemoteStatus(account, cwd);
+
+  if (!status) {
+    spinner.stop("Could not check HubSpot for changes", 1);
+    return undefined;
+  }
+
+  const drift: RemoteDrift = { byPath: driftByPath(status, paths), targets: driftTargets(status) };
+
+  if (status.changed.length + status.added.length === 0) {
+    spinner.stop("HubSpot matches your local copy");
+    return drift;
+  }
+
+  spinner.stop(`${describeRemoteStatus(status)} since your last fetch`);
+  p.note(driftLines(status).map(dim).join("\n"), `Changed on HubSpot · ${account.name}`);
+  return drift;
+}
+
 /** Menu action: re-download one or all saved paths with --overwrite. */
 export async function fetchAction(
   account: HsAccount,
@@ -244,13 +326,19 @@ export async function fetchAction(
     return;
   }
 
+  const drift = await reportRemoteDrift(account, paths, cwd);
+
   const ALL = "__all__";
   const BACK = "__back__";
   const choice = handleCancel(
     await p.select({
       message: "Which path to update? (overwrites local changes)",
       options: [
-        ...paths.map((path) => ({ value: path, label: menuLabel("path", path) })),
+        ...paths.map((path) => ({
+          value: path,
+          label: menuLabel("path", path),
+          hint: describePathDrift(drift?.byPath.get(path)) ?? (drift ? "up to date" : undefined),
+        })),
         ...(paths.length > 1 ? [{ value: ALL, label: menuLabel("all", `All (${paths.length})`) }] : []),
         { value: BACK, label: menuLabel("back", "Back") },
       ],
@@ -258,21 +346,63 @@ export async function fetchAction(
   );
   if (choice === BACK) return;
 
+  // Each saved path is its own project, so "what changed" is asked per path
+  // rather than across all of them.
+  const drifted = choice === ALL ? [] : (drift?.targets ?? []).filter((item) => isUnder(item.path, choice));
+  let targeted = false;
+
+  if (drifted.length > 0) {
+    const FULL = "__full__";
+    const how = handleCancel(
+      await p.select({
+        message: `Update ${choice}`,
+        options: [
+          {
+            value: "targeted" as const,
+            label: menuLabel("fetch", `Only what changed (${drifted.length})`),
+            hint: "downloads just the drifted assets",
+          },
+          {
+            value: FULL,
+            label: menuLabel("all", "Full re-download"),
+            hint: "re-downloads the whole path with --overwrite",
+          },
+          { value: BACK, label: menuLabel("back", "Back") },
+        ],
+      })
+    );
+    if (how === BACK) return;
+    targeted = how === "targeted";
+  }
+
   const confirmed = handleCancel(
-    await p.confirm({ message: "Overwrite local files with the HubSpot version?" })
+    await p.confirm({
+      message: targeted
+        ? `Overwrite ${drifted.length} local asset(s) with the HubSpot version?`
+        : "Overwrite local files with the HubSpot version?",
+    })
   );
   if (!confirmed) return;
 
-  const targets = choice === ALL ? paths : [choice];
+  // Targeted downloads write into the asset's own folder; a whole saved path
+  // uses the default destination.
+  const jobs: { remotePath: string; destination?: string }[] = targeted
+    ? drifted.map((item) => ({ remotePath: item.path, destination: destinationFor(account, item, cwd) }))
+    : (choice === ALL ? paths : [choice]).map((remotePath) => ({ remotePath }));
+
   let failures = 0;
-  for (const remotePath of targets) {
-    if (!(await fetcher(account, remotePath, cwd))) failures++;
+  for (const job of jobs) {
+    if (job.destination) await mkdir(job.destination, { recursive: true });
+    if (!(await fetcher(account, job.remotePath, cwd, { destination: job.destination }))) failures++;
   }
+
+  const noun = targeted ? "asset" : "path";
   if (failures === 0) {
-    p.log.success(`${targets.length} path(s) updated`);
+    p.log.success(`${jobs.length} ${noun}(s) updated`);
   } else {
-    p.log.warn(`${failures} of ${targets.length} path(s) failed`);
+    p.log.warn(`${failures} of ${jobs.length} ${noun}(s) failed`);
   }
+  const targets = jobs.map((job) => job.remotePath);
 
   // Tree was clean before the fetch, so anything changed now came from HubSpot.
   if (gitState.inRepo) {

@@ -5,11 +5,15 @@ import { dirname, join } from "node:path";
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const remote = vi.hoisted(() => ({ computeRemoteStatus: vi.fn() }));
+
 const prompts = vi.hoisted(() => ({
   select: vi.fn(),
   text: vi.fn(),
   confirm: vi.fn(),
   note: vi.fn(),
+  spinnerStart: vi.fn(),
+  spinnerStop: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
@@ -22,6 +26,7 @@ vi.mock("@clack/prompts", () => ({
   text: prompts.text,
   confirm: prompts.confirm,
   note: prompts.note,
+  spinner: () => ({ start: prompts.spinnerStart, stop: prompts.spinnerStop, message: vi.fn() }),
   isCancel: () => false,
   log: {
     warn: prompts.warn,
@@ -32,9 +37,12 @@ vi.mock("@clack/prompts", () => ({
   },
 }));
 
+vi.mock("../src/actions/remote-status.js", () => ({ computeRemoteStatus: remote.computeRemoteStatus }));
+
 import { configurePathAction, fetchAction } from "../src/actions/fetch.js";
 import type { HsAccount } from "../src/hs/accounts.js";
 import { changedFiles } from "../src/git.js";
+import { driftTargets } from "../src/actions/fetch.js";
 import { addPath, savePathsConfig } from "../src/state/paths-config.js";
 
 const account: HsAccount = { name: "example", accountId: "123456", isDefault: true };
@@ -65,6 +73,7 @@ function downloadFrom(file: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   prompts.confirm.mockResolvedValue(true);
+  remote.computeRemoteStatus.mockResolvedValue({ changed: [], added: [] });
 });
 
 describe("fetchAction", () => {
@@ -130,6 +139,170 @@ describe("fetchAction", () => {
     // "Leave uncommitted" must not leave the intent-to-add entries behind.
     expect((await execa("git", ["diff", "--cached", "--name-only"], { cwd })).stdout).toBe("");
   });
+
+  it("lists what changed on HubSpot and hints each saved path", async () => {
+    const { cwd, file } = await createRepo();
+    await savePathsConfig(
+      addPath(addPath({ portals: {} }, "example-123456", "/theme"), "example-123456", "/other"),
+      cwd
+    );
+    remote.computeRemoteStatus.mockResolvedValue({
+      changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
+      added: [{ path: "/theme/modules/hero.module", updated: 3, kind: "module" }],
+    });
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("commit");
+
+    await fetchAction(account, cwd, downloadFrom(file));
+
+    const driftNote = prompts.note.mock.calls.find(([, title]) => String(title).includes("Changed on HubSpot"));
+    expect(driftNote?.[0]).toContain("theme/modules/hero.module");
+    expect(driftNote?.[0]).toContain("theme/main.css");
+    expect(prompts.spinnerStop).toHaveBeenCalledWith(
+      expect.stringContaining("1 changed on HubSpot · 1 new since your last fetch")
+    );
+
+    const options = prompts.select.mock.calls[0]![0].options as { value: string; hint?: string }[];
+    expect(options.find((option) => option.value === "/theme")?.hint).toBe("1 changed · 1 new");
+    expect(options.find((option) => option.value === "/other")?.hint).toBe("up to date");
+  });
+
+  it("continues without path hints when HubSpot cannot be checked", async () => {
+    const { cwd, file } = await createRepo();
+    remote.computeRemoteStatus.mockResolvedValue(undefined);
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("commit");
+
+    await fetchAction(account, cwd, downloadFrom(file));
+
+    const options = prompts.select.mock.calls[0]![0].options as { value: string; hint?: string }[];
+    expect(options.find((option) => option.value === "/theme")?.hint).toBeUndefined();
+    // The fetch itself still runs.
+    expect((await execa("git", ["rev-list", "--count", "HEAD"], { cwd })).stdout).toBe("2");
+  });
+
+  it("skips the HubSpot check when the environment opts out", async () => {
+    const { cwd, file } = await createRepo();
+    process.env.HSDM_NO_REMOTE_CHECK = "1";
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("commit");
+
+    try {
+      await fetchAction(account, cwd, downloadFrom(file));
+    } finally {
+      delete process.env.HSDM_NO_REMOTE_CHECK;
+    }
+
+    expect(remote.computeRemoteStatus).not.toHaveBeenCalled();
+  });
+
+  it("downloads only the drifted assets of the chosen path", async () => {
+    const { cwd, file } = await createRepo();
+    remote.computeRemoteStatus.mockResolvedValue({
+      changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
+      added: [{ path: "/theme/modules/hero.module", updated: 3, kind: "module" }],
+    });
+    prompts.select
+      .mockResolvedValueOnce("/theme")
+      .mockResolvedValueOnce("targeted")
+      .mockResolvedValueOnce("commit");
+    const fetcher = vi.fn(async () => {
+      await writeFile(file, "from hubspot", "utf8");
+      return true;
+    });
+
+    await fetchAction(account, cwd, fetcher);
+
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    // A file is written into its parent folder; a module fills its own.
+    expect(fetcher).toHaveBeenNthCalledWith(1, account, "/theme/main.css", cwd, {
+      destination: join(cwd, "src", "example-123456", "theme"),
+    });
+    expect(fetcher).toHaveBeenNthCalledWith(2, account, "/theme/modules/hero.module", cwd, {
+      destination: join(cwd, "src", "example-123456", "theme", "modules", "hero.module"),
+    });
+    expect(prompts.success).toHaveBeenCalledWith("2 asset(s) updated");
+  });
+
+  it("goes straight to a full re-download when the path has no drift", async () => {
+    const { cwd, file } = await createRepo();
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("commit");
+    const fetcher = vi.fn(downloadFrom(file));
+
+    await fetchAction(account, cwd, fetcher);
+
+    // Path picker, then the post-fetch review: no "how" prompt in between.
+    expect(prompts.select.mock.calls[1]![0].message).toBe("2 local file(s) changed");
+    expect(fetcher).toHaveBeenCalledWith(account, "/theme", cwd, { destination: undefined });
+  });
+
+  it("keeps the drift of other paths out of the targeted download", async () => {
+    const { cwd, file } = await createRepo();
+    await savePathsConfig(
+      addPath(addPath({ portals: {} }, "example-123456", "/theme"), "example-123456", "/other"),
+      cwd
+    );
+    remote.computeRemoteStatus.mockResolvedValue({
+      changed: [
+        { path: "/theme/main.css", updated: 2, kind: "file" },
+        { path: "/other/site.css", updated: 2, kind: "file" },
+      ],
+      added: [],
+    });
+    prompts.select
+      .mockResolvedValueOnce("/theme")
+      .mockResolvedValueOnce("targeted")
+      .mockResolvedValueOnce("commit");
+    const fetcher = vi.fn(async () => {
+      await writeFile(file, "from hubspot", "utf8");
+      return true;
+    });
+
+    await fetchAction(account, cwd, fetcher);
+
+    expect(prompts.select.mock.calls[1]![0].message).toBe("Update /theme");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(account, "/theme/main.css", cwd, expect.anything());
+  });
+
+  it("re-downloads the whole path when asked, even with drift", async () => {
+    const { cwd, file } = await createRepo();
+    remote.computeRemoteStatus.mockResolvedValue({
+      changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
+      added: [],
+    });
+    prompts.select
+      .mockResolvedValueOnce("/theme")
+      .mockResolvedValueOnce("__full__")
+      .mockResolvedValueOnce("commit");
+    const fetcher = vi.fn(downloadFrom(file));
+
+    await fetchAction(account, cwd, fetcher);
+
+    expect(fetcher).toHaveBeenCalledWith(account, "/theme", cwd, { destination: undefined });
+    expect(prompts.success).toHaveBeenCalledWith("1 path(s) updated");
+  });
+
+  it("skips files already covered by a drifted module", async () => {
+    const { cwd, file } = await createRepo();
+    remote.computeRemoteStatus.mockResolvedValue({
+      changed: [
+        { path: "/theme/modules/hero.module", updated: 3, kind: "module" },
+        { path: "/theme/modules/hero.module/module.html", updated: 3, kind: "file" },
+      ],
+      added: [],
+    });
+    prompts.select
+      .mockResolvedValueOnce("/theme")
+      .mockResolvedValueOnce("targeted")
+      .mockResolvedValueOnce("commit");
+    const fetcher = vi.fn(async () => {
+      await writeFile(file, "from hubspot", "utf8");
+      return true;
+    });
+
+    await fetchAction(account, cwd, fetcher);
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledWith(account, "/theme/modules/hero.module", cwd, expect.anything());
+  });
 });
 
 describe("configurePathAction", () => {
@@ -147,5 +320,27 @@ describe("configurePathAction", () => {
     // The guard runs before the path picker, so the user is never prompted.
     expect(prompts.select).not.toHaveBeenCalled();
     expect(prompts.text).not.toHaveBeenCalled();
+  });
+});
+
+function driftItem(path: string, updated: number, kind: "file" | "module" = "file") {
+  return { path, updated, kind };
+}
+
+describe("driftTargets", () => {
+  it("keeps one entry per asset and drops files a drifted module already covers", () => {
+    const targets = driftTargets({
+      changed: [
+        driftItem("/theme/modules/hero.module", 3, "module"),
+        driftItem("/theme/modules/hero.module/module.html", 3),
+        driftItem("/theme/main.css", 2),
+      ],
+      added: [driftItem("/theme/modules/other.module/fields.json", 4)],
+    });
+    expect(targets.map((entry) => entry.path)).toEqual([
+      "/theme/modules/hero.module",
+      "/theme/main.css",
+      "/theme/modules/other.module/fields.json",
+    ]);
   });
 });
