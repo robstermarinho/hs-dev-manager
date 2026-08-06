@@ -7,7 +7,16 @@ import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { streamHs } from "../hs/runner.js";
 import { stripAnsi } from "../hs/watch-parser.js";
-import { changedFiles, commitScoped, isGitRepo } from "../git.js";
+import { truncateDiff } from "../diff.js";
+import {
+  changedFiles,
+  commitScoped,
+  diffScope,
+  isGitRepo,
+  markIntentToAdd,
+  restoreScope,
+  unstageScope,
+} from "../git.js";
 import { designManagerUrl, localDirFor, portalScope, remotePathFor } from "../paths.js";
 import { loadFetchLog, recordFetch, saveFetchLog } from "../state/fetch-log.js";
 import {
@@ -24,7 +33,7 @@ import {
   portalPaths,
   savePathsConfig,
 } from "../state/paths-config.js";
-import { dim, handleCancel, menuLabel, openUrl } from "../ui.js";
+import { colorizeDiff, dim, handleCancel, menuLabel, openUrl } from "../ui.js";
 import { browseRemotePath } from "./browse.js";
 
 export interface PortalGitState {
@@ -279,10 +288,81 @@ export async function fetchAction(
       return;
     }
     const message = `chore(hubspot): sync ${targets.join(", ")} from ${account.name}`;
-    if (await commitScoped(cwd, gitState.scope, message)) {
-      p.log.success(`Sync commit created: ${synced.length} file(s)`);
-    } else {
-      p.log.warn("Sync commit failed — check git status.");
+    await reviewSyncedChanges(account, gitState.scope, synced.length, message, cwd);
+  }
+}
+
+/**
+ * Show what the fetch brought in and let the user commit it, inspect it, or undo
+ * it. Undoing is safe here: the scope was verified clean before the download, so
+ * everything in it now came from HubSpot.
+ */
+async function reviewSyncedChanges(
+  account: HsAccount,
+  scope: string,
+  fileCount: number,
+  message: string,
+  cwd: string
+): Promise<void> {
+  // Files the fetch created are untracked and would not appear in a diff.
+  await markIntentToAdd(cwd, scope);
+  const stat = (await diffScope(cwd, scope, "stat")).trim();
+  if (stat) p.note(dim(truncateDiff(stat, 20)), `Changes from ${account.name}`);
+
+  while (true) {
+    const choice = handleCancel(
+      await p.select({
+        message: `${fileCount} local file(s) changed`,
+        options: [
+          { value: "commit" as const, label: menuLabel("use", "Commit sync"), hint: message },
+          { value: "diff" as const, label: menuLabel("list", "Show full diff"), hint: "what HubSpot changed locally" },
+          {
+            value: "revert" as const,
+            label: menuLabel("remove", "Undo fetch"),
+            hint: "restore the previous local state",
+          },
+          { value: "keep" as const, label: menuLabel("back", "Leave uncommitted"), hint: "decide later in git" },
+        ],
+      })
+    );
+
+    if (choice === "diff") {
+      const diff = (await diffScope(cwd, scope)).trim();
+      if (diff) {
+        p.note(colorizeDiff(truncateDiff(diff, 200)), `hubspot → local · ${scope}`);
+      } else {
+        p.log.warn("No textual diff available (new or binary files only).");
+      }
+      continue;
     }
+
+    if (choice === "commit") {
+      if (await commitScoped(cwd, scope, message)) {
+        p.log.success(`Sync commit created: ${fileCount} file(s)`);
+      } else {
+        p.log.warn("Sync commit failed — check git status.");
+      }
+      return;
+    }
+
+    if (choice === "revert") {
+      const confirmed = handleCancel(
+        await p.confirm({
+          message: `Discard the downloaded changes in ${scope}? Files that only exist on HubSpot are deleted locally.`,
+          initialValue: false,
+        })
+      );
+      if (!confirmed) continue;
+      if (await restoreScope(cwd, scope)) {
+        p.log.success("Fetch undone — local files restored to the last commit.");
+      } else {
+        p.log.warn(`Could not fully undo the fetch — check git status in ${scope}.`);
+      }
+      return;
+    }
+
+    await unstageScope(cwd, scope);
+    p.log.info(dim("Left uncommitted — commit or deploy it before the next fetch."));
+    return;
   }
 }

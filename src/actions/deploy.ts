@@ -5,11 +5,14 @@ import * as p from "@clack/prompts";
 import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { runHs } from "../hs/runner.js";
+import { diffRemoteAgainstLocal } from "../diff.js";
 import { changedFiles, commitScoped, isGitRepo } from "../git.js";
+import { countIssues, errorsOf, renderLintResults } from "../lint.js";
 import { portalScope, remotePathFor } from "../paths.js";
 import { addDeploy, loadHistory, saveHistory, timestampNow } from "../state/history.js";
 import { loadRemoteState, recordRemoteFiles, saveRemoteState, sha256 } from "../state/remote-state.js";
-import { dim, handleCancel, menuLabel } from "../ui.js";
+import { colorizeDiff, dim, handleCancel, menuLabel } from "../ui.js";
+import { lintFiles } from "./lint.js";
 import { checkRemoteConflicts, conflictsOf, unverifiedOf, type RemoteConflict } from "./remote-check.js";
 
 const IGNORE_PATTERNS = [/(^|\/)\.DS_Store$/, /\.log$/, /(^|\/)\.git(\/|$)/];
@@ -21,6 +24,53 @@ export function filterDeployable(files: string[]): string[] {
 
 function renderConflictList(results: RemoteConflict[]): string {
   return results.map((result) => `  ${result.file} — ${result.check.reason}`).join("\n");
+}
+
+/**
+ * Lint the selection before it reaches HubSpot. Returns the files still meant to
+ * be uploaded, or undefined when the deploy should be aborted.
+ */
+async function resolveLintErrors(files: string[], cwd: string): Promise<string[] | undefined> {
+  const spinner = p.spinner();
+  spinner.start("Linting selected files");
+  const results = await lintFiles(files, cwd);
+  const broken = errorsOf(results);
+  const warnings = countIssues(results, "warning");
+  spinner.stop(
+    broken.length === 0
+      ? `Linted ${results.length} file(s) — no errors`
+      : `Linted ${results.length} file(s) — ${broken.length} with errors`
+  );
+
+  if (broken.length === 0) {
+    if (warnings > 0) p.note(renderLintResults(results), `Lint warnings (${warnings})`);
+    return files;
+  }
+
+  p.log.error(`Lint errors — uploading these would break the template on HubSpot:\n${renderLintResults(broken)}`);
+
+  const choice = handleCancel(
+    await p.select({
+      message: "How do you want to handle the lint errors?",
+      options: [
+        {
+          value: "skip" as const,
+          label: menuLabel("remove", `Skip file(s) with errors (${broken.length})`),
+          hint: "deploy the rest",
+        },
+        { value: "deploy" as const, label: menuLabel("deploy", "Deploy anyway"), hint: "upload the broken file too" },
+        { value: "cancel" as const, label: menuLabel("exit", "Cancel deploy") },
+      ],
+    })
+  );
+
+  if (choice === "cancel") return undefined;
+  if (choice === "deploy") return files;
+
+  const failed = new Set(broken.map((result) => result.file));
+  const remaining = files.filter((file) => !failed.has(file));
+  if (remaining.length === 0) p.log.warn("Every selected file failed lint — nothing left to deploy.");
+  return remaining;
 }
 
 /**
@@ -55,32 +105,75 @@ async function resolveRemoteConflicts(
     `These files changed on HubSpot since your last sync — uploading overwrites those edits:\n${renderConflictList(conflicts)}`
   );
 
-  const choice = handleCancel(
-    await p.select({
-      message: "How do you want to handle the remote changes?",
-      options: [
-        {
-          value: "skip" as const,
-          label: menuLabel("remove", `Skip conflicted file(s) (${conflicts.length})`),
-          hint: "deploy the rest",
-        },
-        {
-          value: "overwrite" as const,
-          label: menuLabel("deploy", "Overwrite remote anyway"),
-          hint: "HubSpot edits are lost",
-        },
-        { value: "cancel" as const, label: menuLabel("exit", "Cancel deploy") },
-      ],
-    })
-  );
+  while (true) {
+    const choice = handleCancel(
+      await p.select({
+        message: "How do you want to handle the remote changes?",
+        options: [
+          {
+            value: "diff" as const,
+            label: menuLabel("list", "Show diff (HubSpot → local)"),
+            hint: "what the upload would overwrite",
+          },
+          {
+            value: "skip" as const,
+            label: menuLabel("remove", `Skip conflicted file(s) (${conflicts.length})`),
+            hint: "deploy the rest",
+          },
+          {
+            value: "overwrite" as const,
+            label: menuLabel("deploy", "Overwrite remote anyway"),
+            hint: "HubSpot edits are lost",
+          },
+          { value: "cancel" as const, label: menuLabel("exit", "Cancel deploy") },
+        ],
+      })
+    );
 
-  if (choice === "cancel") return undefined;
-  if (choice === "overwrite") return files;
+    if (choice === "diff") {
+      await showConflictDiff(conflicts, cwd);
+      continue;
+    }
+    if (choice === "cancel") return undefined;
+    if (choice === "overwrite") return files;
 
-  const conflicted = new Set(conflicts.map((result) => result.file));
-  const remaining = files.filter((file) => !conflicted.has(file));
-  if (remaining.length === 0) p.log.warn("Every selected file is conflicted — nothing left to deploy.");
-  return remaining;
+    const conflicted = new Set(conflicts.map((result) => result.file));
+    const remaining = files.filter((file) => !conflicted.has(file));
+    if (remaining.length === 0) p.log.warn("Every selected file is conflicted — nothing left to deploy.");
+    return remaining;
+  }
+}
+
+/** Render the HubSpot → local diff of one conflicted file, asking which when several. */
+async function showConflictDiff(conflicts: RemoteConflict[], cwd: string): Promise<void> {
+  const BACK = "__back__";
+  let target = conflicts[0];
+
+  if (conflicts.length > 1) {
+    const picked = handleCancel(
+      await p.select({
+        message: "Diff which file?",
+        options: [
+          ...conflicts.map((conflict) => ({ value: conflict.file, label: menuLabel("path", conflict.file) })),
+          { value: BACK, label: menuLabel("back", "Back") },
+        ],
+      })
+    );
+    if (picked === BACK) return;
+    target = conflicts.find((conflict) => conflict.file === picked);
+  }
+
+  if (!target?.remoteContent) {
+    p.log.warn("The HubSpot copy is no longer available for a diff.");
+    return;
+  }
+
+  const diff = await diffRemoteAgainstLocal(target.remoteContent, join(cwd, target.file));
+  if (!diff) {
+    p.log.warn(`No text diff available for ${target.file} (binary file or git could not compare it).`);
+    return;
+  }
+  p.note(colorizeDiff(diff), `hubspot → local · ${target.file}`);
 }
 
 /**
@@ -144,8 +237,12 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
 
   p.note(selected.map((file) => dim(file)).join("\n"), `${selected.length} file(s) to deploy`);
 
+  // Cheapest gate first: broken syntax is worth catching before any network call.
+  const linted = await resolveLintErrors(selected, cwd);
+  if (!linted || linted.length === 0) return;
+
   // Ask before spending time on a commit message: the remote may have moved.
-  const toUpload = await resolveRemoteConflicts(account, selected, cwd);
+  const toUpload = await resolveRemoteConflicts(account, linted, cwd);
   if (!toUpload || toUpload.length === 0) return;
 
   const message = handleCancel(

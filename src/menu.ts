@@ -4,6 +4,7 @@ import { deployAction } from "./actions/deploy.js";
 import { configurePathAction, fetchAction } from "./actions/fetch.js";
 import { helperAction } from "./actions/helper.js";
 import { historyAction } from "./actions/history.js";
+import { lintAction } from "./actions/lint.js";
 import { portalLinksAction } from "./actions/portal-links.js";
 import { addPortalAction } from "./actions/portal.js";
 import { removePathAction } from "./actions/remove-path.js";
@@ -23,6 +24,7 @@ export type MenuAction =
   | "configure"
   | "fetch"
   | "watch"
+  | "lint"
   | "deploy"
   | "history"
   | "links"
@@ -117,6 +119,11 @@ export async function mainMenu(portal: HsAccount): Promise<MenuAction> {
           hint: "re-download with --overwrite",
         },
         { value: "watch" as const, label: menuLabel("watch", "Watch"), hint: "auto-sync on save" },
+        {
+          value: "lint" as const,
+          label: menuLabel("check", "Lint local files"),
+          hint: "HubL + JSON syntax, offline",
+        },
         { value: "deploy" as const, label: menuLabel("deploy", "Deploy"), hint: "upload changes + git commit" },
         {
           value: "history" as const,
@@ -179,6 +186,9 @@ export async function runApp(): Promise<void> {
         break;
       case "watch":
         await watchAction(portal, process.cwd(), deployAction);
+        break;
+      case "lint":
+        await lintAction(portal);
         break;
       case "deploy":
         await deployAction(portal);

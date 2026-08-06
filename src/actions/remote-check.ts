@@ -13,6 +13,8 @@ export interface RemoteConflict {
   file: string;
   remotePath: string;
   check: ConflictCheck;
+  /** Downloaded HubSpot copy, kept for conflicts so the diff needs no second fetch. */
+  remoteContent?: Uint8Array;
 }
 
 export interface RemoteCheckDeps {
@@ -85,15 +87,13 @@ export async function checkRemoteConflicts(
       continue;
     }
 
-    results.push({
-      file,
-      remotePath,
-      check: classifyConflict({
-        localHash,
-        remoteHash: sha256(remote),
-        syncedHash: syncedHash(state, key, remotePath),
-      }),
+    const check = classifyConflict({
+      localHash,
+      remoteHash: sha256(remote),
+      syncedHash: syncedHash(state, key, remotePath),
     });
+    // Only conflicts can be diffed, so only those hold on to the remote bytes.
+    results.push({ file, remotePath, check, ...(check.status === "conflict" ? { remoteContent: remote } : {}) });
   }
 
   return results;

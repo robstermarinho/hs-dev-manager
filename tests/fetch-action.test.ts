@@ -1,6 +1,7 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { execa } from "execa";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +9,7 @@ const prompts = vi.hoisted(() => ({
   select: vi.fn(),
   text: vi.fn(),
   confirm: vi.fn(),
+  note: vi.fn(),
   warn: vi.fn(),
   error: vi.fn(),
   info: vi.fn(),
@@ -19,6 +21,7 @@ vi.mock("@clack/prompts", () => ({
   select: prompts.select,
   text: prompts.text,
   confirm: prompts.confirm,
+  note: prompts.note,
   isCancel: () => false,
   log: {
     warn: prompts.warn,
@@ -50,6 +53,15 @@ async function createRepo(): Promise<{ cwd: string; file: string }> {
   return { cwd, file };
 }
 
+/** Stand-in for a successful download: overwrites one tracked file and adds a new one. */
+function downloadFrom(file: string) {
+  return async (): Promise<boolean> => {
+    await writeFile(file, "from hubspot", "utf8");
+    await writeFile(join(dirname(file), "new.css"), "new from hubspot", "utf8");
+    return true;
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   prompts.confirm.mockResolvedValue(true);
@@ -70,6 +82,53 @@ describe("fetchAction", () => {
     ]);
     expect((await execa("git", ["rev-list", "--count", "HEAD"], { cwd })).stdout).toBe("1");
     expect(prompts.warn).toHaveBeenCalledWith(expect.stringContaining("left uncommitted"));
+  });
+
+  it("commits the sync when the user reviews and confirms", async () => {
+    const { cwd, file } = await createRepo();
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("commit");
+
+    await fetchAction(account, cwd, downloadFrom(file));
+
+    expect(await changedFiles(cwd, "src/example-123456")).toEqual([]);
+    expect((await execa("git", ["rev-list", "--count", "HEAD"], { cwd })).stdout).toBe("2");
+    expect(prompts.success).toHaveBeenCalledWith(expect.stringContaining("Sync commit created"));
+  });
+
+  it("shows the diff and stays on the review prompt", async () => {
+    const { cwd, file } = await createRepo();
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("diff").mockResolvedValueOnce("commit");
+
+    await fetchAction(account, cwd, downloadFrom(file));
+
+    const diffNote = prompts.note.mock.calls.find(([, title]) => String(title).includes("hubspot → local"));
+    expect(diffNote?.[0]).toContain("-before");
+    expect(diffNote?.[0]).toContain("+from hubspot");
+    expect((await execa("git", ["rev-list", "--count", "HEAD"], { cwd })).stdout).toBe("2");
+  });
+
+  it("undoes the fetch, restoring tracked files and deleting new ones", async () => {
+    const { cwd, file } = await createRepo();
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("revert");
+
+    await fetchAction(account, cwd, downloadFrom(file));
+
+    expect(await readFile(file, "utf8")).toBe("before");
+    expect(existsSync(join(cwd, "src/example-123456/theme/new.css"))).toBe(false);
+    expect(await changedFiles(cwd, "src/example-123456")).toEqual([]);
+    expect((await execa("git", ["rev-list", "--count", "HEAD"], { cwd })).stdout).toBe("1");
+  });
+
+  it("keeps the changes in the working tree without staging them", async () => {
+    const { cwd, file } = await createRepo();
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("keep");
+
+    await fetchAction(account, cwd, downloadFrom(file));
+
+    expect(await readFile(file, "utf8")).toBe("from hubspot");
+    expect((await execa("git", ["rev-list", "--count", "HEAD"], { cwd })).stdout).toBe("1");
+    // "Leave uncommitted" must not leave the intent-to-add entries behind.
+    expect((await execa("git", ["diff", "--cached", "--name-only"], { cwd })).stdout).toBe("");
   });
 });
 

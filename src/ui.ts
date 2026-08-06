@@ -51,6 +51,7 @@ export const menuIcon = {
   watch: "~",
   deploy: "↑",
   history: "↺",
+  check: "✔",
   help: "?",
   back: "←",
   exit: "×",
@@ -71,6 +72,19 @@ export type MenuIcon = keyof typeof menuIcon;
 /** Prefix an interactive option with a compact, terminal-safe symbol. */
 export function menuLabel(icon: MenuIcon, label: string): string {
   return `${accent(menuIcon[icon])} ${label}`;
+}
+
+/** Color a unified diff: additions green, removals red, hunk headers cyan. */
+export function colorizeDiff(diff: string): string {
+  return diff
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("+")) return pc.green(line);
+      if (line.startsWith("-")) return pc.red(line);
+      if (line.startsWith("@@")) return accent(line);
+      return dim(line);
+    })
+    .join("\n");
 }
 
 interface TreeNode {

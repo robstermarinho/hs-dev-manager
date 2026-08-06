@@ -49,6 +49,42 @@ export async function changedFiles(cwd: string, scope?: string): Promise<string[
 }
 
 /**
+ * Register untracked files in the index without their content, so files that a
+ * fetch just created show up in `git diff` instead of being invisible.
+ */
+export async function markIntentToAdd(cwd: string, scope: string): Promise<boolean> {
+  const result = await git(["add", "--intent-to-add", "--", scope], cwd);
+  return result.ok;
+}
+
+/** Drop staged entries in a scope, leaving the working tree untouched. */
+export async function unstageScope(cwd: string, scope: string): Promise<boolean> {
+  const result = await git(["reset", "--quiet", "--", scope], cwd);
+  return result.ok;
+}
+
+/** Working-tree diff against HEAD, limited to a scope. Empty string on failure. */
+export async function diffScope(cwd: string, scope: string, mode: "full" | "stat" = "full"): Promise<string> {
+  const args = ["diff", "--no-color"];
+  if (mode === "stat") args.push("--stat");
+  args.push("--", scope);
+  const result = await git(args, cwd);
+  return result.ok ? result.stdout : "";
+}
+
+/**
+ * Undo every change in a scope: unstage, restore tracked files from HEAD and
+ * delete files that are not in HEAD. Destructive — only safe when the scope was
+ * clean before the change being undone. Verified by re-reading git status.
+ */
+export async function restoreScope(cwd: string, scope: string): Promise<boolean> {
+  await git(["reset", "--quiet", "--", scope], cwd);
+  await git(["checkout", "--", scope], cwd);
+  await git(["clean", "-fdq", "--", scope], cwd);
+  return (await changedFiles(cwd, scope)).length === 0;
+}
+
+/**
  * Stage and commit only the given pathspec(s) — a scope directory or a list of
  * files. Returns false if nothing to commit or on failure.
  */

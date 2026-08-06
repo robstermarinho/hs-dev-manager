@@ -56,6 +56,7 @@ describe("mainMenu", () => {
       "≡ List saved paths",
       "↓ Fetch / update local",
       "~ Watch",
+      "✔ Lint local files",
       "↑ Deploy",
       "↺ Deploy history",
       "↗ Open HubSpot",
