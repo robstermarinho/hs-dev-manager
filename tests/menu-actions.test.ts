@@ -86,9 +86,14 @@ describe("read-only menu actions", () => {
       cwd
     );
 
+    prompts.select.mockResolvedValueOnce("0").mockResolvedValueOnce("__back__");
+
     await historyAction(account, cwd);
 
-    expect(prompts.note).toHaveBeenCalledWith(expect.stringContaining("deploy theme"), expect.stringContaining("example"));
+    expect(prompts.note).toHaveBeenCalledWith(
+      expect.stringContaining("deploy theme"),
+      expect.stringContaining("2026-07-21")
+    );
   });
 
   it("renders the built-in help", async () => {
