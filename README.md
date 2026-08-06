@@ -109,11 +109,13 @@ Entering `Fetch / update local` lists exactly what moved on HubSpot, with a per-
 
 Deploy uses the same listing to decide which files actually need comparing: a file whose remote copy has not moved since your last sync is not downloaded at all. Anything the listing does not cover falls back to a per-folder listing and a download, so coverage gaps never turn into a silent overwrite.
 
-To skip the check entirely — in CI, or with an access key that lacks the scopes:
+To skip every remote check — in CI, or with an access key that lacks the scopes:
 
 ```bash
 HSDM_NO_REMOTE_CHECK=1 hsdm
 ```
+
+Deploy then uploads without comparing against HubSpot, so edits made there are overwritten silently. It says so before uploading.
 
 ## Local files
 
