@@ -76,6 +76,33 @@ describe("lintHubl", () => {
     expect(lintHubl("{% dnd_area 'main' %}{% end_dnd_section %}")[0]?.message).toContain("does not match");
   });
 
+  it("handles whitespace-control markers", () => {
+    const macro = [
+      "{% macro link_attrs(link) %}",
+      "  {%- if link and link.url -%}",
+      '    href="{{ link.url.href }}"',
+      "    {%- if link.new_tab %} target=\"_blank\"{% endif -%}",
+      "  {%- else -%}",
+      '    href="#"',
+      "  {%- endif -%}",
+      "{% endmacro %}",
+    ].join("\n");
+    expect(lintHubl(macro)).toEqual([]);
+  });
+
+  it("respects backslash escapes inside tag strings", () => {
+    expect(lintHubl("{% dnd_module title='Don\\'t take our word %} for it' %}{% end_dnd_module %}")).toEqual([]);
+  });
+
+  it("reads the tag name when punctuation follows it", () => {
+    expect(lintHubl("{% dnd_section,\n  vertical_alignment='MIDDLE'\n%}{% end_dnd_section %}")).toEqual([]);
+  });
+
+  it("does not parse HubL inside a raw block", () => {
+    expect(lintHubl("{% raw %}{% if %}{{ unclosed {% endfor %}{% endraw %}\n")).toEqual([]);
+    expect(lintHubl("{% raw %}{% if %}\n")[0]?.message).toBe("{% raw %} is never closed");
+  });
+
   it("ignores tags it does not know", () => {
     expect(lintHubl("{% include 'a.html' %}\n{% custom_thing %}\n{% do whatever %}")).toEqual([]);
   });

@@ -75,9 +75,13 @@ export function positionAt(text: string, offset: number): { line: number; column
   return { line: lines.length, column: (lines[lines.length - 1]?.length ?? 0) + 1 };
 }
 
-/** First word of a tag body: `{% for x in y %}` → "for". */
+/**
+ * First word of a tag body: `{% for x in y %}` → "for". Whitespace-control
+ * markers (`{%- if x -%}`) are stripped first.
+ */
 function tagName(body: string): string {
-  return body.trim().split(/[\s(]/, 1)[0]?.toLowerCase() ?? "";
+  const stripped = body.trim().replace(/^[-+]+/, "").trim();
+  return /^[A-Za-z_][A-Za-z0-9_]*/.exec(stripped)?.[0].toLowerCase() ?? "";
 }
 
 /** `endif` / `end_dnd_area` → "if" / "dnd_area"; undefined when not a closing tag. */
@@ -117,6 +121,10 @@ export function lintHubl(text: string): LintIssue[] {
 
     while (cursor < text.length) {
       const char = text[cursor] as string;
+      if (quote && char === "\\") {
+        cursor += 2; // Escaped character inside a string, e.g. 'Don\'t'.
+        continue;
+      }
       if (delimiter.quoted && (char === '"' || char === "'")) {
         if (quote === char) quote = undefined;
         else if (!quote) quote = char;
@@ -152,6 +160,17 @@ export function lintHubl(text: string): LintIssue[] {
             message: `{% ${name} %} does not match {% ${open.name} %} opened on line ${open.line}`,
           });
         }
+      } else if (name === "raw") {
+        // Everything inside {% raw %} is literal text, not HubL.
+        const endRaw = /\{%-?\s*endraw\s*-?%\}/g;
+        endRaw.lastIndex = end + delimiter.close.length;
+        const match = endRaw.exec(text);
+        if (!match) {
+          issues.push({ ...start, severity: "error", message: "{% raw %} is never closed" });
+          break;
+        }
+        index = match.index + match[0].length;
+        continue;
       } else if (!closes && BLOCK_TAGS.has(name)) {
         // `{% set x = 1 %}` is a statement; only the bodyless form opens a block.
         const isInlineSet = name === "set" && body.includes("=");
