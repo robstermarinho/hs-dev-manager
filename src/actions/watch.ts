@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { mkdir } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import * as p from "@clack/prompts";
 import pc from "picocolors";
@@ -8,13 +9,117 @@ import { streamHs } from "../hs/runner.js";
 import { parseWatchLine } from "../hs/watch-parser.js";
 import { changedFiles, isGitRepo } from "../git.js";
 import { localDirFor, portalScope } from "../paths.js";
+import {
+  describeRemoteStatus,
+  driftLines,
+  isRemoteCheckDisabled,
+  isUnder,
+  type RemoteStatus,
+} from "../remote-status.js";
 import { lastFetch, loadFetchLog, timeAgo } from "../state/fetch-log.js";
 import { loadPathsConfig, portalPaths } from "../state/paths-config.js";
 import { dim, handleCancel, menuLabel } from "../ui.js";
-import { fetchRemotePath, portalGitState, reportDirtyPortal } from "./fetch.js";
+import { destinationFor, driftTargets, fetchRemotePath, portalGitState, reportDirtyPortal } from "./fetch.js";
+import { computeRemoteStatus } from "./remote-status.js";
 import { applyEvent, createWatchStats, summaryLines } from "./watch-monitor.js";
 
 export type DeployFn = (account: HsAccount, cwd: string) => Promise<void>;
+
+interface SyncJob {
+  remotePath: string;
+  destination?: string;
+}
+
+/** Re-download before watching, refusing to overwrite uncommitted work. */
+async function runSync(account: HsAccount, cwd: string, jobs: SyncJob[]): Promise<boolean> {
+  const gitState = await portalGitState(account, cwd);
+  if (gitState.dirty.length > 0) {
+    reportDirtyPortal(gitState);
+    return false;
+  }
+  for (const job of jobs) {
+    if (job.destination) await mkdir(job.destination, { recursive: true });
+    if (!(await fetchRemotePath(account, job.remotePath, cwd, { destination: job.destination }))) return false;
+  }
+  return true;
+}
+
+/**
+ * Decide what to pull down before the watch starts. The remote listing answers
+ * whether anything actually moved, so the old blind "fetch first?" question is
+ * only asked when that listing is unavailable.
+ *
+ * Returns false when the watch should not start.
+ */
+async function syncBeforeWatch(account: HsAccount, remotePath: string, cwd: string): Promise<boolean> {
+  const fetched = lastFetch(await loadFetchLog(cwd), portalKey(account), remotePath);
+  const age = fetched ? timeAgo(fetched) : "never";
+
+  let scoped: RemoteStatus | undefined;
+  if (!isRemoteCheckDisabled()) {
+    const spinner = p.spinner();
+    spinner.start("Checking HubSpot for changes");
+    const status = await computeRemoteStatus(account, cwd);
+    if (status) {
+      scoped = {
+        changed: status.changed.filter((item) => isUnder(item.path, remotePath)),
+        added: status.added.filter((item) => isUnder(item.path, remotePath)),
+      };
+      if (scoped.changed.length + scoped.added.length === 0) {
+        spinner.stop(`HubSpot matches your local copy ${dim(`(last fetch: ${age})`)}`);
+        return true;
+      }
+      spinner.stop(`${describeRemoteStatus(scoped)} since your last sync`);
+      p.note(driftLines(scoped).map(dim).join("\n"), `Changed on HubSpot · ${remotePath}`);
+    } else {
+      spinner.stop("Could not check HubSpot for changes", 1);
+    }
+  }
+
+  // Nothing to go on: fall back to asking, as before the check existed.
+  if (!scoped) {
+    const doFetch = handleCancel(
+      await p.confirm({
+        message: `Fetch latest from HubSpot before watching? ${dim(`(last fetch: ${age} — overwrites local changes)`)}`,
+        initialValue: false,
+      })
+    );
+    return doFetch ? runSync(account, cwd, [{ remotePath }]) : true;
+  }
+
+  const targets = driftTargets(scoped);
+  const FULL = "__full__";
+  const SKIP = "__skip__";
+  const BACK = "__back__";
+  const choice = handleCancel(
+    await p.select({
+      message: "Sync before watching?",
+      options: [
+        {
+          value: "targeted" as const,
+          label: menuLabel("fetch", `Download what changed (${targets.length})`),
+          hint: "overwrites those local files",
+        },
+        { value: FULL, label: menuLabel("all", "Full re-download"), hint: `re-downloads ${remotePath}` },
+        {
+          value: SKIP,
+          label: menuLabel("watch", "Watch anyway"),
+          hint: "your local copy stays behind HubSpot",
+        },
+        { value: BACK, label: menuLabel("back", "Back") },
+      ],
+    })
+  );
+
+  if (choice === BACK) return false;
+  if (choice === SKIP) return true;
+  if (choice === FULL) return runSync(account, cwd, [{ remotePath }]);
+  return runSync(
+    account,
+    cwd,
+    targets.map((item) => ({ remotePath: item.path, destination: destinationFor(account, item, cwd) }))
+  );
+}
 
 /** Menu action: watch a saved path and live-sync local edits to HubSpot. */
 export async function watchAction(
@@ -54,24 +159,8 @@ export async function watchAction(
     return;
   }
 
-  // Local files may be stale (no cheap remote diff exists in the hs CLI),
-  // so surface the last fetch age and offer a refresh before watching.
-  const fetched = lastFetch(await loadFetchLog(cwd), portalKey(account), remotePath);
-  const age = fetched ? timeAgo(fetched) : "never";
-  const doFetch = handleCancel(
-    await p.confirm({
-      message: `Fetch latest from HubSpot before watching? ${dim(`(last fetch: ${age} — overwrites local changes)`)}`,
-      initialValue: false,
-    })
-  );
-  if (doFetch) {
-    const gitState = await portalGitState(account, cwd);
-    if (gitState.dirty.length > 0) {
-      reportDirtyPortal(gitState);
-      return;
-    }
-    if (!(await fetchRemotePath(account, remotePath, cwd))) return;
-  }
+  // Watching uploads local edits, so start from a local copy that is not behind.
+  if (!(await syncBeforeWatch(account, remotePath, cwd))) return;
 
   p.note(
     `${pc.cyan(remotePath)}\n${dim("Saved changes upload automatically. Press Ctrl+C to stop.")}`,
