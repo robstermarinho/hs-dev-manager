@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RemoteItem } from "../src/hs/remote-inventory.js";
-import { normalizeTemplatePath, normalizeWidgetPath, parseV4Objects } from "../src/hs/remote-inventory.js";
+import { normalizeTemplatePath, normalizeWidgetPath, parseV4Page } from "../src/hs/remote-inventory.js";
 import {
   CLOCK_TOLERANCE_MS,
   compareRemote,
@@ -23,9 +23,10 @@ function item(path: string, updated: number, kind: RemoteItem["kind"] = "file"):
   return { path, updated, kind };
 }
 
-describe("parseV4Objects", () => {
-  it("keeps well-formed entries only", () => {
+describe("parseV4Page", () => {
+  it("keeps well-formed entries and reports the listing total", () => {
     const stdout = JSON.stringify({
+      total: 42,
       objects: [
         { path: "theme/main.css", updated: 1 },
         { path: "theme/no-date.css" },
@@ -33,13 +34,23 @@ describe("parseV4Objects", () => {
         null,
       ],
     });
-    expect(parseV4Objects(stdout)).toEqual([{ path: "theme/main.css", updated: 1 }]);
+    expect(parseV4Page(stdout)).toEqual({ entries: [{ path: "theme/main.css", updated: 1 }], total: 42 });
   });
 
-  it("is empty for malformed or unexpected payloads", () => {
-    expect(parseV4Objects("not json")).toEqual([]);
-    expect(parseV4Objects('{"objects":"nope"}')).toEqual([]);
-    expect(parseV4Objects("<html>404</html>")).toEqual([]);
+  it("falls back to the page size when the total is missing", () => {
+    const stdout = JSON.stringify({ objects: [{ path: "a.css", updated: 1 }] });
+    expect(parseV4Page(stdout)?.total).toBe(1);
+  });
+
+  it("is undefined for anything that is not a listing", () => {
+    // Undefined, not empty: a broken response must never read as "nothing changed".
+    expect(parseV4Page("not json")).toBeUndefined();
+    expect(parseV4Page('{"objects":"nope"}')).toBeUndefined();
+    expect(parseV4Page("<html>404</html>")).toBeUndefined();
+  });
+
+  it("reads a genuinely empty listing as empty", () => {
+    expect(parseV4Page('{"total":0,"objects":[]}')).toEqual({ entries: [], total: 0 });
   });
 });
 
