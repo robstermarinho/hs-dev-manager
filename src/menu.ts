@@ -12,7 +12,7 @@ import { offerHsUpgrade } from "./actions/upgrade.js";
 import { watchAction } from "./actions/watch.js";
 import { discoverAccounts, portalKey, type AccountsResult, type HsAccount } from "./hs/accounts.js";
 import { checkHsCli, hsInstallHint } from "./hs/version.js";
-import { latestSelfVersion, selfUpdateHint } from "./self-version.js";
+import { latestSelfVersion, selfUpdateHint, SELF_PACKAGE, SELF_VERSION } from "./self-version.js";
 import { loadLastPortalId, saveLastPortalId } from "./state/last-portal.js";
 import { loadPathsConfig, portalPaths } from "./state/paths-config.js";
 import { renderBanner } from "./banner.js";
@@ -156,7 +156,7 @@ export async function runApp(): Promise<void> {
   if (!cli.supported) {
     fail(hsInstallHint(cli));
   }
-  p.log.info(dim(`HubSpot CLI v${cli.version}`));
+  p.log.info(dim(`${SELF_PACKAGE} v${SELF_VERSION} · HubSpot CLI v${cli.version}`));
   if (cli.support === "untested") {
     p.log.warn(`HubSpot CLI v${cli.version} is newer than we have tested. Proceeding, but issues are possible.`);
   }
