@@ -1,5 +1,6 @@
 import type { DeployRecord } from "./state/history.js";
 import { timeAgo } from "./state/fetch-log.js";
+import { shortenPath } from "./ui.js";
 
 /** Parse the stored local timestamp ("YYYY-MM-DD HH:MM:SS"). */
 export function parseDeployTimestamp(timestamp: string): Date | undefined {
@@ -27,22 +28,6 @@ export function deployAge(timestamp: string, now: Date = new Date()): string {
 export function scopeRelative(file: string, scope: string): string {
   const prefix = `${scope}/`;
   return file.startsWith(prefix) ? file.slice(prefix.length) : file;
-}
-
-/**
- * Keep a path readable in a one-line row by dropping leading segments:
- * `a/b/c/module.html` → `…/c/module.html`. The file name is never cut unless it
- * alone exceeds the budget.
- */
-export function shortenPath(path: string, max: number = 52): string {
-  if (path.length <= max) return path;
-  const segments = path.split("/");
-  for (let index = 1; index < segments.length; index++) {
-    const tail = segments.slice(index).join("/");
-    if (tail.length + 2 <= max) return `…/${tail}`;
-  }
-  const name = segments[segments.length - 1] ?? path;
-  return `…${name.slice(Math.max(0, name.length - (max - 1)))}`;
 }
 
 /** Shortest useful description of a deploy's files: first path, then "+N more". */

@@ -6,9 +6,9 @@ import {
   fileCountLabel,
   parseDeployTimestamp,
   scopeRelative,
-  shortenPath,
   summarizeFiles,
 } from "../src/history-view.js";
+import { shortenPath } from "../src/ui.js";
 import type { DeployRecord } from "../src/state/history.js";
 
 const SCOPE = "src/example-123456";

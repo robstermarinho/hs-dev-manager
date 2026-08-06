@@ -74,6 +74,22 @@ export function menuLabel(icon: MenuIcon, label: string): string {
   return `${accent(menuIcon[icon])} ${label}`;
 }
 
+/**
+ * Keep a path readable in a one-line row by dropping leading segments:
+ * `a/b/c/module.html` → `…/c/module.html`. The file name is never cut unless it
+ * alone exceeds the budget.
+ */
+export function shortenPath(path: string, max: number = 52): string {
+  if (path.length <= max) return path;
+  const segments = path.split("/");
+  for (let index = 1; index < segments.length; index++) {
+    const tail = segments.slice(index).join("/");
+    if (tail.length + 2 <= max) return `…/${tail}`;
+  }
+  const name = segments[segments.length - 1] ?? path;
+  return `…${name.slice(Math.max(0, name.length - (max - 1)))}`;
+}
+
 /** Color a unified diff: additions green, removals red, hunk headers cyan. */
 export function colorizeDiff(diff: string): string {
   return diff
