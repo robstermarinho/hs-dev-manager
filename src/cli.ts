@@ -1,13 +1,24 @@
 import { createRequire } from "node:module";
+import { helpText, parseCliArgs } from "./cli-args.js";
 
 const require = createRequire(import.meta.url);
-const pkg = require("../package.json") as { version: string };
+const pkg = require("../package.json") as { name: string; version: string };
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+  const mode = parseCliArgs(process.argv.slice(2));
 
-  if (args.includes("--version") || args.includes("-v")) {
+  if (mode.kind === "version") {
     console.log(pkg.version);
+    return;
+  }
+  if (mode.kind === "help") {
+    console.log(helpText(pkg.name, pkg.version));
+    return;
+  }
+  if (mode.kind === "unknown") {
+    console.error(`Unknown option: ${mode.flag}\n`);
+    console.error(helpText(pkg.name, pkg.version));
+    process.exitCode = 1;
     return;
   }
 
