@@ -7,7 +7,7 @@ import type { HsAccount } from "../hs/accounts.js";
 import { portalKey } from "../hs/accounts.js";
 import { streamHs } from "../hs/runner.js";
 import { parseWatchLine } from "../hs/watch-parser.js";
-import { changedFiles, isGitRepo } from "../git.js";
+import { changedFiles, commitScoped, isGitRepo } from "../git.js";
 import { localDirFor, portalScope } from "../paths.js";
 import {
   describeRemoteStatus,
@@ -30,7 +30,13 @@ interface SyncJob {
   destination?: string;
 }
 
-/** Re-download before watching, refusing to overwrite uncommitted work. */
+/**
+ * Re-download before watching, refusing to overwrite uncommitted work.
+ *
+ * What comes down is committed right away: leaving it in the working tree would
+ * block the next fetch on its clean-tree guard and get swept into the deploy
+ * offered when the watch stops — for content that came from HubSpot.
+ */
 async function runSync(account: HsAccount, cwd: string, jobs: SyncJob[]): Promise<boolean> {
   const gitState = await portalGitState(account, cwd);
   if (gitState.dirty.length > 0) {
@@ -40,6 +46,17 @@ async function runSync(account: HsAccount, cwd: string, jobs: SyncJob[]): Promis
   for (const job of jobs) {
     if (job.destination) await mkdir(job.destination, { recursive: true });
     if (!(await fetchRemotePath(account, job.remotePath, cwd, { destination: job.destination }))) return false;
+  }
+
+  if (!gitState.inRepo) return true;
+  const synced = await changedFiles(cwd, gitState.scope);
+  if (synced.length === 0) return true;
+
+  const message = `chore(hubspot): sync ${jobs.map((job) => job.remotePath).join(", ")} from ${account.name}`;
+  if (await commitScoped(cwd, gitState.scope, message)) {
+    p.log.success(`Sync commit created: ${synced.length} file(s)`);
+  } else {
+    p.log.warn("Sync commit failed — check git status before deploying.");
   }
   return true;
 }

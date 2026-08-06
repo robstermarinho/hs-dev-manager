@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as FetchModule from "../src/actions/fetch.js";
+import type * as GitModule from "../src/git.js";
 
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
@@ -12,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   warn: vi.fn(),
   info: vi.fn(),
   computeRemoteStatus: vi.fn(),
+  changedFiles: vi.fn(),
+  commitScoped: vi.fn(),
   fetchRemotePath: vi.fn(),
   portalGitState: vi.fn(),
   streamHs: vi.fn(),
@@ -38,6 +41,11 @@ vi.mock("../src/actions/fetch.js", async (importOriginal) => {
 });
 
 vi.mock("../src/hs/runner.js", () => ({ streamHs: mocks.streamHs }));
+
+vi.mock("../src/git.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof GitModule>();
+  return { ...actual, changedFiles: mocks.changedFiles, commitScoped: mocks.commitScoped };
+});
 
 import { watchAction } from "../src/actions/watch.js";
 import type { HsAccount } from "../src/hs/accounts.js";
@@ -67,6 +75,8 @@ beforeEach(() => {
   mocks.streamHs.mockImplementation(() => watchChild());
   mocks.portalGitState.mockResolvedValue({ inRepo: false, scope: "src/example-123456", dirty: [] });
   mocks.fetchRemotePath.mockResolvedValue(true);
+  mocks.changedFiles.mockResolvedValue([]);
+  mocks.commitScoped.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -109,6 +119,29 @@ describe("watchAction", () => {
     expect(mocks.fetchRemotePath).toHaveBeenNthCalledWith(1, account, "/theme/main.css", cwd, {
       destination: join(cwd, "src", "example-123456", "theme"),
     });
+    expect(mocks.streamHs).toHaveBeenCalled();
+  });
+
+  it("commits what the pre-watch sync downloaded", async () => {
+    const cwd = await workspace();
+    mocks.computeRemoteStatus.mockResolvedValue({
+      changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
+      added: [],
+    });
+    mocks.portalGitState.mockResolvedValue({ inRepo: true, scope: "src/example-123456", dirty: [] });
+    mocks.changedFiles.mockResolvedValue(["src/example-123456/theme/main.css"]);
+    mocks.commitScoped.mockResolvedValue(true);
+    mocks.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("targeted");
+
+    await watchAction(account, cwd);
+
+    // Left uncommitted, this would block the next fetch and be swept into the
+    // deploy offered when the watch stops.
+    expect(mocks.commitScoped).toHaveBeenCalledWith(
+      cwd,
+      "src/example-123456",
+      "chore(hubspot): sync /theme/main.css from example"
+    );
     expect(mocks.streamHs).toHaveBeenCalled();
   });
 
