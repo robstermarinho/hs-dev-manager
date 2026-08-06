@@ -9,6 +9,7 @@ import { diffRemoteAgainstLocal } from "../diff.js";
 import { changedFiles, commitScoped, isGitRepo } from "../git.js";
 import { countIssues, errorsOf, renderLintResults } from "../lint.js";
 import { portalScope, remotePathFor } from "../paths.js";
+import { isRemoteCheckDisabled, REMOTE_CHECK_ENV } from "../remote-status.js";
 import { addDeploy, loadHistory, saveHistory, timestampNow } from "../state/history.js";
 import { loadRemoteState, recordRemoteFiles, saveRemoteState, sha256 } from "../state/remote-state.js";
 import { colorizeDiff, dim, handleCancel, menuLabel } from "../ui.js";
@@ -242,7 +243,14 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
   if (!linted || linted.length === 0) return;
 
   // Ask before spending time on a commit message: the remote may have moved.
-  const toUpload = await resolveRemoteConflicts(account, linted, cwd);
+  let toUpload: string[] | undefined = linted;
+  if (isRemoteCheckDisabled()) {
+    p.log.warn(
+      `${REMOTE_CHECK_ENV} is set: uploading without comparing against HubSpot, so edits made there are overwritten silently.`
+    );
+  } else {
+    toUpload = await resolveRemoteConflicts(account, linted, cwd);
+  }
   if (!toUpload || toUpload.length === 0) return;
 
   const message = handleCancel(

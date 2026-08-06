@@ -215,6 +215,27 @@ describe("deployAction", () => {
     expect(mocks.upload).toHaveBeenCalledTimes(1);
   });
 
+  it("uploads without checking HubSpot when the environment opts out", async () => {
+    const { cwd, first } = await createRepo();
+    process.env.HSDM_NO_REMOTE_CHECK = "1";
+    mocks.multiselect.mockResolvedValue(["src/example-123456/theme/first.css"]);
+    mocks.upload.mockResolvedValue({ ok: true, exitCode: 0, stdout: "", stderr: "" });
+
+    try {
+      await deployAction(account, cwd);
+    } finally {
+      delete process.env.HSDM_NO_REMOTE_CHECK;
+    }
+
+    expect(mocks.checkRemoteConflicts).not.toHaveBeenCalled();
+    // The lost protection has to be said out loud, not assumed.
+    expect(mocks.warn).toHaveBeenCalledWith(expect.stringContaining("HSDM_NO_REMOTE_CHECK"));
+    expect(mocks.upload).toHaveBeenCalledWith(["cms", "upload", first, "/theme/first.css"], {
+      accountId: "123456",
+      cwd,
+    });
+  });
+
   it("aborts without uploading when the user cancels on a conflict", async () => {
     const { cwd } = await createRepo();
     const selected = ["src/example-123456/theme/first.css"];
