@@ -1,5 +1,6 @@
 export type CliMode =
   | { kind: "run" }
+  | { kind: "init" }
   | { kind: "version" }
   | { kind: "help" }
   | { kind: "unknown"; flag: string };
@@ -18,7 +19,9 @@ export function parseCliArgs(args: string[]): CliMode {
   if (args.some((arg) => VERSION_FLAGS.includes(arg))) return { kind: "version" };
 
   const unknown = args.find((arg) => arg.startsWith("-"));
-  return unknown ? { kind: "unknown", flag: unknown } : { kind: "run" };
+  if (unknown) return { kind: "unknown", flag: unknown };
+
+  return args[0] === "init" ? { kind: "init" } : { kind: "run" };
 }
 
 export function helpText(packageName: string, version: string): string {
@@ -27,6 +30,7 @@ export function helpText(packageName: string, version: string): string {
     "",
     "Usage",
     "  hsdm                 start the interactive menu",
+    "  hsdm init            prepare this folder (git repository + .gitignore)",
     "  hsdm --version       print the version",
     "  hsdm --help          print this help",
     "",

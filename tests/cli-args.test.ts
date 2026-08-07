@@ -22,12 +22,17 @@ describe("parseCliArgs", () => {
   it("ignores non-flag arguments", () => {
     expect(parseCliArgs(["whatever"])).toEqual({ kind: "run" });
   });
+
+  it("recognizes the init subcommand", () => {
+    expect(parseCliArgs(["init"])).toEqual({ kind: "init" });
+  });
 });
 
 describe("helpText", () => {
   it("names the tool and documents the escape hatch", () => {
     const text = helpText("hs-dev-manager", "1.2.3");
     expect(text).toContain("hs-dev-manager v1.2.3");
+    expect(text).toContain("hsdm init");
     expect(text).toContain("hsdm --version");
     expect(text).toContain("HSDM_NO_REMOTE_CHECK=1");
   });

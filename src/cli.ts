@@ -22,6 +22,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (mode.kind === "init") {
+    const { bootstrapProject, describeBootstrap } = await import("./bootstrap.js");
+    for (const line of describeBootstrap(await bootstrapProject())) console.log(line);
+    return;
+  }
+
   const { runApp } = await import("./menu.js");
   await runApp();
 }

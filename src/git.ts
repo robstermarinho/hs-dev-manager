@@ -15,6 +15,12 @@ async function git(args: string[], cwd: string): Promise<GitResult> {
   };
 }
 
+/** Create an empty repository. False when git refuses (already one, no permission). */
+export async function initRepo(cwd: string): Promise<boolean> {
+  const result = await git(["init", "--quiet"], cwd);
+  return result.ok;
+}
+
 export async function isGitRepo(cwd: string): Promise<boolean> {
   const result = await git(["rev-parse", "--is-inside-work-tree"], cwd);
   return result.ok && result.stdout.trim() === "true";
