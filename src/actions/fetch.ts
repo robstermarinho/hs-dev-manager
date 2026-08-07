@@ -1,5 +1,5 @@
 import { mkdir, readFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import * as p from "@clack/prompts";
 import { countLocalFiles, renderFetchComplete, renderFetchProgress } from "../fetch-progress.js";
@@ -8,6 +8,12 @@ import { portalKey } from "../hs/accounts.js";
 import { streamHs } from "../hs/runner.js";
 import { parentRemote } from "../hs/remote-ls.js";
 import { stripAnsi } from "../hs/watch-parser.js";
+import {
+  bootstrapProject,
+  describeBootstrap,
+  GITIGNORE_FILE,
+  missingIgnoreEntries,
+} from "../bootstrap.js";
 import { truncateDiff } from "../diff.js";
 import {
   changedFiles,
@@ -227,6 +233,31 @@ async function pickRemotePath(account: HsAccount): Promise<string | undefined> {
   }
 }
 
+/**
+ * Keep the tool's local state out of the team's history. Asked once: after the
+ * first path is saved, which is when db/ and .hsaccount start appearing.
+ */
+async function offerLocalStateIgnore(cwd: string): Promise<void> {
+  let current = "";
+  try {
+    current = await readFile(join(cwd, GITIGNORE_FILE), "utf8");
+  } catch {
+    // No .gitignore yet.
+  }
+  const missing = missingIgnoreEntries(current);
+  if (missing.length === 0) return;
+
+  const add = handleCancel(
+    await p.confirm({
+      message: `Add ${missing.join(" and ")} to .gitignore? ${dim("(local state — paths-config.json stays tracked)")}`,
+    })
+  );
+  if (!add) return;
+
+  const result = await bootstrapProject(cwd, { initGit: false });
+  for (const line of describeBootstrap(result)) p.log.info(dim(line));
+}
+
 /** Menu action: download a new remote path and register it in paths-config.json. */
 export async function configurePathAction(
   account: HsAccount,
@@ -237,7 +268,21 @@ export async function configurePathAction(
   // Require a clean portal scope up front — before the user spends time
   // browsing for a path — so existing work cannot be overwritten or
   // accidentally included in that commit.
-  const gitState = await portalGitState(account, cwd);
+  let gitState = await portalGitState(account, cwd);
+  if (!gitState.inRepo) {
+    // Offered here rather than at startup: this is the first action that needs
+    // a repository, and it is about to write files worth tracking.
+    const initialize = handleCancel(
+      await p.confirm({
+        message: "This folder is not a git repository. Deploy and sync commits need one — initialize it?",
+      })
+    );
+    if (initialize) {
+      const result = await bootstrapProject(cwd);
+      for (const line of describeBootstrap(result)) p.log.info(dim(line));
+      gitState = await portalGitState(account, cwd);
+    }
+  }
   if (gitState.dirty.length > 0) {
     reportDirtyPortal(gitState);
     return;
@@ -258,6 +303,7 @@ export async function configurePathAction(
   if (isNew) {
     await savePathsConfig(addPath(config, key, remotePath), cwd);
     p.log.success("Path saved to paths-config.json");
+    await offerLocalStateIgnore(cwd);
     if (gitState.inRepo) {
       const committed = await commitScoped(cwd, portalScope(account), `chore(hubspot): init local download ${remotePath}`);
       if (committed) p.log.info(dim("Initial commit created"));

@@ -324,6 +324,51 @@ describe("fetchAction", () => {
 });
 
 describe("configurePathAction", () => {
+  it("offers to initialize a repository before writing anything", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "hsdm-fetch-norepo-"));
+    prompts.select.mockResolvedValue("type");
+    prompts.text.mockResolvedValue("/theme");
+    const fetcher = vi.fn().mockResolvedValue(true);
+
+    await configurePathAction(account, cwd, fetcher);
+
+    expect(prompts.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("not a git repository") })
+    );
+    expect(existsSync(join(cwd, ".git"))).toBe(true);
+    expect(await readFile(join(cwd, ".gitignore"), "utf8")).toContain("db/");
+    expect(fetcher).toHaveBeenCalled();
+  });
+
+  it("keeps going without a repository when the offer is declined", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "hsdm-fetch-norepo-"));
+    prompts.select.mockResolvedValue("type");
+    prompts.text.mockResolvedValue("/theme");
+    prompts.confirm.mockResolvedValue(false);
+    const fetcher = vi.fn().mockResolvedValue(true);
+
+    await configurePathAction(account, cwd, fetcher);
+
+    expect(existsSync(join(cwd, ".git"))).toBe(false);
+    expect(existsSync(join(cwd, ".gitignore"))).toBe(false);
+    // The download still happens: git is only needed for commits.
+    expect(fetcher).toHaveBeenCalled();
+  });
+
+  it("does not ask about .gitignore when it already covers the local state", async () => {
+    const { cwd } = await createRepo();
+    await writeFile(join(cwd, ".gitignore"), ["db/", ".hsaccount", ""].join("\n"), "utf8");
+    prompts.select.mockResolvedValue("type");
+    prompts.text.mockResolvedValue("/theme2");
+
+    await configurePathAction(account, cwd, vi.fn().mockResolvedValue(true));
+
+    const asked = prompts.confirm.mock.calls.some(([options]) =>
+      String((options as { message: string }).message).includes(".gitignore")
+    );
+    expect(asked).toBe(false);
+  });
+
   it("does not overwrite or commit when the portal scope is dirty", async () => {
     const { cwd, file } = await createRepo();
     await writeFile(file, "local work", "utf8");
