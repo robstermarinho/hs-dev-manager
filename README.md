@@ -157,6 +157,17 @@ Useful scripts:
 
 Release notes live in [CHANGELOG.md](./CHANGELOG.md).
 
+## Releasing
+
+```bash
+npm version <patch|minor|major>   # bumps package.json, commits, tags
+git push --follow-tags            # the tag triggers .github/workflows/release.yml
+```
+
+The workflow refuses a tag that disagrees with `package.json`, runs `prepublishOnly`
+(lint, typecheck, tests, build) and publishes with npm provenance. It needs an
+`NPM_TOKEN` secret with publish rights on the repository.
+
 ## License
 
 MIT © 2026 Robert Marinho

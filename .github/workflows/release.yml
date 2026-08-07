@@ -1,0 +1,42 @@
+name: Release
+
+# Publishes when a v* tag is pushed, so the tag stays the single trigger:
+#   npm version <patch|minor|major> && git push --follow-tags
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  # Required for npm provenance, which records on the npm page that this
+  # tarball was built by this workflow from this commit.
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      # Refuse to publish a tag that disagrees with package.json.
+      - name: Check the tag matches the version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      # prepublishOnly runs lint, typecheck, tests and the build.
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
