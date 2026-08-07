@@ -54,10 +54,12 @@ async function createRepo(): Promise<{ cwd: string; file: string }> {
   await mkdir(join(file, ".."), { recursive: true });
   await writeFile(file, "before", "utf8");
   await execa("git", ["init", "--quiet"], { cwd });
+  // Repo-local identity, not `git -c`: the code under test runs its own commits
+  // and CI runners have no global one to fall back on.
+  await execa("git", ["config", "user.name", "Test"], { cwd });
+  await execa("git", ["config", "user.email", "test@example.com"], { cwd });
   await execa("git", ["add", "."], { cwd });
-  await execa("git", ["-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "base", "--quiet"], {
-    cwd,
-  });
+  await execa("git", ["commit", "-m", "base", "--quiet"], { cwd });
   await savePathsConfig(addPath({ portals: {} }, "example-123456", "/theme"), cwd);
   return { cwd, file };
 }
