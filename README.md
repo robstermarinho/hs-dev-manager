@@ -86,34 +86,6 @@ Open `hsdm` and choose **Fetch / update local**. It reports what changed in the 
 | `paths-config.json` | yes — which remote paths the project tracks, shared with the team |
 | `db/`, `.hsaccount` | no — local sync state and your last selected account (`hsdm init` ignores them) |
 
-## What it looks like
-
-Every session starts by picking the portal you are about to touch, so "which account am I on?" stops being a question you answer from memory:
-
-<p align="center">
-  <img src="assets/screenshot-portals.png" alt="Portal selection listing authenticated HubSpot accounts, with the last used one marked" width="720">
-</p>
-
-From there, every action is scoped to that portal until you switch:
-
-<p align="center">
-  <img src="assets/screenshot-menu.png" alt="Main menu showing path, sync, and session actions for the selected portal" width="720">
-</p>
-
-Entering `Paths` shows what the portal tracks before offering to add or remove anything:
-
-<p align="center">
-  <img src="assets/screenshot-paths.png" alt="Paths submenu listing the saved remote paths of the portal as a tree" width="720">
-</p>
-
-Past deploys are browsable, with relative ages and the files each one carried:
-
-<p align="center">
-  <img src="assets/screenshot-history.png" alt="Deploy history listing past deploys with status, relative age and file counts" width="720">
-</p>
-
-Account names and IDs above are fictional.
-
 ## Safety behavior
 
 - Fetch operations use HubSpot's `--overwrite` option and are blocked when the selected account's local scope contains uncommitted changes.
@@ -180,6 +152,10 @@ Useful scripts:
 - `npm run typecheck`: Run TypeScript without emitting files
 - `npm test`: Run the Vitest suite once
 - `npm run build`: Build the Node 22 ESM bundle in `dist/`
+
+## Changelog
+
+Release notes live in [CHANGELOG.md](./CHANGELOG.md).
 
 ## License
 
