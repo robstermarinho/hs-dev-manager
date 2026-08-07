@@ -19,6 +19,7 @@
     "dev": "node scripts/build.mjs --watch",
     "start": "node dist/cli.js",
     "demo": "npm run build && ./scripts/demo.sh",
+    "screenshots": "npm run build && for t in portals menu paths history; do vhs scripts/screenshots/$t.tape; done",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

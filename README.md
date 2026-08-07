@@ -100,6 +100,18 @@ From there, every action is scoped to that portal until you switch:
   <img src="assets/screenshot-menu.png" alt="Main menu showing path, sync, and session actions for the selected portal" width="720">
 </p>
 
+Entering `Paths` shows what the portal tracks before offering to add or remove anything:
+
+<p align="center">
+  <img src="assets/screenshot-paths.png" alt="Paths submenu listing the saved remote paths of the portal as a tree" width="720">
+</p>
+
+Past deploys are browsable, with relative ages and the files each one carried:
+
+<p align="center">
+  <img src="assets/screenshot-history.png" alt="Deploy history listing past deploys with status, relative age and file counts" width="720">
+</p>
+
 Account names and IDs above are fictional.
 
 ## Safety behavior
