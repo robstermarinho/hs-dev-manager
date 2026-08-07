@@ -33,36 +33,58 @@ If you manage a single portal, the official CLI is probably all you need. If you
 - At least one authenticated HubSpot account
 - Git for deploy detection and automatic sync commits
 
-Install and authenticate the official HubSpot CLI first:
+## Get started
+
+From nothing to a first deploy. Steps 1 and 2 are one-time setup for the machine.
+
+**1. Install the HubSpot CLI and authenticate an account**
 
 ```bash
 npm install --global @hubspot/cli
 hs account auth
 ```
 
-## Install
+**2. Install this tool**
 
 ```bash
 npm install --global hs-dev-manager
 ```
 
-Both executable names are equivalent:
+**3. Prepare a folder for the HubSpot files**
+
+```bash
+mkdir my-hubspot-site && cd my-hubspot-site
+hsdm init
+```
+
+`hsdm init` creates a Git repository (deploy and sync commits need one) and a `.gitignore` for the tool's local state. It is safe to re-run, and it never touches rules you already have. Skipping it is fine too: the menu offers the same thing the first time it matters.
+
+**4. Download a Design Manager path**
 
 ```bash
 hsdm
-hs-dev-manager
 ```
 
-## Quick start
+Pick your account, then **Paths → Configure new path**. Browse the Design Manager or type a path such as `/my-theme`. Files land under `src/{account-name}-{account-id}/`.
 
-Run `hsdm` from the root of the Git repository where HubSpot files should live.
+**5. Edit locally, then send the changes back**
 
-1. Select an authenticated HubSpot account.
-2. Choose **Configure new path** and browse or enter a Design Manager path.
-3. Edit the downloaded files under `src/{account-name}-{account-id}/`.
-4. Use **Watch** to upload changes on save, or **Deploy** to select files, upload them, and create a scoped Git commit.
+Edit the downloaded files with your own editor, then from the menu:
 
-The CLI remembers the last selected account and the remote paths configured for each account.
+- **Watch** uploads each file as you save it — best for iterating on styles and templates.
+- **Deploy** lets you pick which changed files to upload, checks them against HubSpot first, and records a scoped Git commit.
+
+**6. Come back later**
+
+Open `hsdm` and choose **Fetch / update local**. It reports what changed in the Design Manager since your last sync — someone editing there is the normal case — and lets you download only what moved, or the whole path.
+
+### What gets tracked
+
+| Path | Commit it? |
+| --- | --- |
+| `src/{account}-{id}/` | yes — the HubSpot files themselves |
+| `paths-config.json` | yes — which remote paths the project tracks, shared with the team |
+| `db/`, `.hsaccount` | no — local sync state and your last selected account (`hsdm init` ignores them) |
 
 ## What it looks like
 
