@@ -2,7 +2,7 @@
 
 Notable changes to `hs-dev-manager`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] — unreleased
+## [0.2.0] — 2026-08-06
 
 Everything the tool sends to or takes from HubSpot now starts from knowing what changed there. In 0.1.0, fetch overwrote and deploy uploaded without ever comparing, so an edit made in the Design Manager was lost without a word.
 
