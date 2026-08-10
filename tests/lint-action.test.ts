@@ -4,19 +4,24 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prompts = vi.hoisted(() => ({
+  select: vi.fn(),
   note: vi.fn(),
   success: vi.fn(),
+  warn: vi.fn(),
+  info: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
-  select: vi.fn(),
+  select: prompts.select,
   isCancel: () => false,
   note: prompts.note,
   spinner: () => ({ start: vi.fn(), stop: vi.fn(), message: vi.fn() }),
-  log: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), success: prompts.success },
+  log: { warn: prompts.warn, error: vi.fn(), info: prompts.info, success: prompts.success },
 }));
 
-import { collectLintableFiles, lintFiles, reportLintResults } from "../src/actions/lint.js";
+import { collectLintableFiles, lintAction, lintFiles, reportLintResults } from "../src/actions/lint.js";
+import type { HsAccount } from "../src/hs/accounts.js";
+import { addPath, savePathsConfig } from "../src/state/paths-config.js";
 
 const SCOPE = "src/example-123456";
 
@@ -91,5 +96,83 @@ describe("reportLintResults", () => {
     const failed = [{ file: "a.html", issues: [{ line: 2, column: 1, severity: "error" as const, message: "e" }] }];
     expect(reportLintResults(failed, "Changed files")).toBe(false);
     expect(prompts.note).toHaveBeenCalledWith(expect.stringContaining("2:1  error  e"), expect.stringContaining("1 error(s)"));
+  });
+});
+
+const account: HsAccount = { name: "example", accountId: "123456", isDefault: true };
+
+function stripAnsi(text: string): string {
+  return text.replace(/\[[0-9;]*m/g, "");
+}
+
+describe("lintAction", () => {
+  it("offers the saved paths alongside the changed and whole-portal choices", async () => {
+    const cwd = await createWorkspace({ [`${SCOPE}/theme/home.html`]: "ok" });
+    await savePathsConfig(addPath({ portals: {} }, "example-123456", "/theme"), cwd);
+    prompts.select.mockResolvedValue("__back__");
+
+    await lintAction(account, cwd);
+
+    const options = prompts.select.mock.calls[0]![0].options as { value: string }[];
+    expect(options.map((option) => option.value)).toEqual(["__changed__", "/theme", "__all__", "__back__"]);
+  });
+
+  it("lints a saved path and reports its problems", async () => {
+    const cwd = await createWorkspace({
+      [`${SCOPE}/theme/broken.html`]: "{% for item in items %}\n",
+      [`${SCOPE}/other/ignored.html`]: "{% if a %}\n",
+    });
+    await savePathsConfig(addPath({ portals: {} }, "example-123456", "/theme"), cwd);
+    prompts.select.mockResolvedValue("/theme");
+
+    await lintAction(account, cwd);
+
+    const [body, title] = prompts.note.mock.calls[0]!;
+    expect(stripAnsi(body)).toContain("{% for %} is never closed");
+    // The other path is not part of this run.
+    expect(stripAnsi(body)).not.toContain("ignored.html");
+    expect(stripAnsi(title)).toContain("/theme");
+  });
+
+  it("lints the whole portal", async () => {
+    const cwd = await createWorkspace({
+      [`${SCOPE}/theme/a.html`]: "{% if a %}{% endif %}",
+      [`${SCOPE}/other/b.json`]: "{",
+    });
+    prompts.select.mockResolvedValue("__all__");
+
+    await lintAction(account, cwd);
+
+    expect(stripAnsi(prompts.note.mock.calls[0]![0])).toContain("Invalid JSON");
+  });
+
+  it("says so when the selection holds nothing lintable", async () => {
+    const cwd = await createWorkspace({ [`${SCOPE}/theme/main.css`]: "body {}" });
+    prompts.select.mockResolvedValue("__all__");
+
+    await lintAction(account, cwd);
+
+    expect(prompts.info).toHaveBeenCalledWith(expect.stringContaining("Nothing to lint"));
+    expect(prompts.note).not.toHaveBeenCalled();
+  });
+
+  it("refuses the changed-files option outside a git repository", async () => {
+    const cwd = await createWorkspace({ [`${SCOPE}/theme/a.html`]: "ok" });
+    prompts.select.mockResolvedValue("__changed__");
+
+    await lintAction(account, cwd);
+
+    expect(prompts.warn).toHaveBeenCalledWith(expect.stringContaining("requires a git repository"));
+    expect(prompts.note).not.toHaveBeenCalled();
+  });
+
+  it("does nothing when the user goes back", async () => {
+    const cwd = await createWorkspace({ [`${SCOPE}/theme/a.html`]: "{% if a %}" });
+    prompts.select.mockResolvedValue("__back__");
+
+    await lintAction(account, cwd);
+
+    expect(prompts.note).not.toHaveBeenCalled();
+    expect(prompts.success).not.toHaveBeenCalled();
   });
 });
