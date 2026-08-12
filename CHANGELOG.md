@@ -4,6 +4,10 @@ Notable changes to `hs-dev-manager`. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- **The Paths screen says what state each saved path is in**: how long ago it was fetched and whether it exists on disk, so a path configured on another machine or deleted locally is visible without entering fetch. An `Open Design Manager` item sits next to it. The screen stays offline — it is re-rendered after every sub-action, and drift is reported where it is acted on.
+
 ### Fixed
 
 - **The drift check reported "HubSpot matches your local copy" when it had nothing to compare against.** A portal with no sync records — every repo carried over from the bash version — had no baseline, and the missing baseline was rendered as an all-clear, hiding real Design Manager edits. Paths that cannot be compared are now named as unverified, in the headline, in the per-path hints, and in watch, which falls back to asking instead of starting on a copy it cannot vouch for.

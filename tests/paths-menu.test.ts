@@ -1,13 +1,15 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type * as uiModule from "../src/ui.js";
 
 const mocks = vi.hoisted(() => ({
   select: vi.fn(),
   note: vi.fn(),
   configurePathAction: vi.fn(),
   removePathAction: vi.fn(),
+  openUrl: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -17,11 +19,18 @@ vi.mock("@clack/prompts", () => ({
   log: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() },
 }));
 
+// Only openUrl is stubbed: the rest of the ui helpers do the real rendering.
+vi.mock("../src/ui.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof uiModule>()),
+  openUrl: mocks.openUrl,
+}));
+
 vi.mock("../src/actions/fetch.js", () => ({ configurePathAction: mocks.configurePathAction }));
 vi.mock("../src/actions/remove-path.js", () => ({ removePathAction: mocks.removePathAction }));
 
 import { pathsAction } from "../src/actions/paths-menu.js";
 import type { HsAccount } from "../src/hs/accounts.js";
+import { recordFetch, saveFetchLog } from "../src/state/fetch-log.js";
 import { addPath, savePathsConfig } from "../src/state/paths-config.js";
 
 const account: HsAccount = { name: "example", accountId: "123456", isDefault: true };
@@ -40,10 +49,11 @@ async function workspace(paths: string[]): Promise<string> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.openUrl.mockResolvedValue(true);
 });
 
 describe("pathsAction", () => {
-  it("shows the saved paths as a tree before asking anything", async () => {
+  it("shows each saved path with its local status before asking anything", async () => {
     const cwd = await workspace(["/theme/templates", "/theme/modules"]);
     mocks.select.mockResolvedValue("__back__");
 
@@ -56,6 +66,37 @@ describe("pathsAction", () => {
     expect(mocks.select.mock.calls[0]![0].message).toBe("2 saved path(s)");
   });
 
+  it("says which paths were never fetched and which are not on disk", async () => {
+    const cwd = await workspace(["/theme"]);
+    await saveFetchLog(recordFetch({ fetches: {} }, "example-123456", "/theme"), cwd);
+    await mkdir(join(cwd, "src", "example-123456", "theme"), { recursive: true });
+    mocks.select.mockResolvedValue("__back__");
+
+    await pathsAction(account, cwd);
+
+    expect(stripAnsi(mocks.note.mock.calls[0]![0])).toContain("fetched just now · downloaded");
+  });
+
+  it("marks a saved path that has no local directory", async () => {
+    // Configured on another machine, or deleted locally: only a fetch brings it back.
+    const cwd = await workspace(["/theme"]);
+    mocks.select.mockResolvedValue("__back__");
+
+    await pathsAction(account, cwd);
+
+    expect(stripAnsi(mocks.note.mock.calls[0]![0])).toContain("never fetched · not downloaded");
+  });
+
+  it("opens the Design Manager without leaving the menu", async () => {
+    const cwd = await workspace(["/theme"]);
+    mocks.select.mockResolvedValueOnce("__open__").mockResolvedValueOnce("__back__");
+
+    await pathsAction(account, cwd);
+
+    expect(mocks.openUrl).toHaveBeenCalledWith("https://app.hubspot.com/design-manager/123456");
+    expect(mocks.note).toHaveBeenCalledTimes(2);
+  });
+
   it("hides removal when there is nothing to remove", async () => {
     const cwd = await workspace([]);
     mocks.select.mockResolvedValue("__back__");
@@ -63,7 +104,8 @@ describe("pathsAction", () => {
     await pathsAction(account, cwd);
 
     const values = (mocks.select.mock.calls[0]![0].options as { value: string }[]).map((o) => o.value);
-    expect(values).toEqual(["__configure__", "__back__"]);
+    // Opening the Design Manager needs no saved path, so it stays.
+    expect(values).toEqual(["__configure__", "__open__", "__back__"]);
   });
 
   it("returns to the list after configuring, so the tree reflects the change", async () => {
