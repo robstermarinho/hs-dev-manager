@@ -10,6 +10,7 @@ import { parseWatchLine } from "../hs/watch-parser.js";
 import { changedFiles, commitScoped, isGitRepo } from "../git.js";
 import { localDirFor, portalScope } from "../paths.js";
 import {
+  describeQuietStatus,
   describeRemoteStatus,
   driftLines,
   isRemoteCheckDisabled,
@@ -88,13 +89,24 @@ async function syncBeforeWatch(account: HsAccount, remotePath: string, cwd: stri
       scoped = {
         changed: status.changed.filter((item) => isUnder(item.path, remotePath)),
         added: status.added.filter((item) => isUnder(item.path, remotePath)),
+        baselines: new Map(
+          [...status.baselines].filter(([path]) => isUnder(path, remotePath) || isUnder(remotePath, path))
+        ),
       };
       if (scoped.changed.length + scoped.added.length === 0) {
-        spinner.stop(`HubSpot matches your local copy ${dim(`(last fetch: ${age})`)}`);
-        return true;
+        const quiet = describeQuietStatus(scoped);
+        if (quiet.ok) {
+          spinner.stop(`${quiet.message} ${dim(`(last fetch: ${age})`)}`);
+          return true;
+        }
+        // Unverifiable is not "in sync": fall back to asking, as before the check
+        // existed, rather than starting a watch on a copy that may be stale.
+        spinner.stop(quiet.message, 1);
+        scoped = undefined;
+      } else {
+        spinner.stop(`${describeRemoteStatus(scoped)} since your last sync`);
+        p.note(driftLines(scoped).map(dim).join("\n"), `Changed on HubSpot · ${remotePath}`);
       }
-      spinner.stop(`${describeRemoteStatus(scoped)} since your last sync`);
-      p.note(driftLines(scoped).map(dim).join("\n"), `Changed on HubSpot · ${remotePath}`);
     } else {
       spinner.stop("Could not check HubSpot for changes", 1);
     }

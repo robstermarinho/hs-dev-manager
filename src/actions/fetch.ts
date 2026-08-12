@@ -19,22 +19,28 @@ import {
   changedFiles,
   commitScoped,
   diffScope,
+  fileAtHead,
   isGitRepo,
   markIntentToAdd,
+  restoreFiles,
   restoreScope,
   unstageScope,
 } from "../git.js";
+import { isJsonAsset, isJsonNoise } from "../json-noise.js";
 import type { RemoteItem } from "../hs/remote-inventory.js";
 import { designManagerUrl, localDirFor, portalScope, remotePathFor } from "../paths.js";
 import {
+  type BaselineKind,
+  describeBaseline,
   describePathDrift,
+  describeQuietStatus,
   describeRemoteStatus,
   driftByPath,
   driftLines,
   isRemoteCheckDisabled,
   isUnder,
   type PathDrift,
-  type RemoteStatus,
+  type RemoteDriftSets,
 } from "../remote-status.js";
 import { computeRemoteStatus } from "./remote-status.js";
 import { loadFetchLog, recordFetch, saveFetchLog } from "../state/fetch-log.js";
@@ -315,7 +321,7 @@ export async function configurePathAction(
  * Assets to re-download, with a module dropping the files it already contains so
  * nothing is fetched twice.
  */
-export function driftTargets(status: RemoteStatus): RemoteItem[] {
+export function driftTargets(status: RemoteDriftSets): RemoteItem[] {
   const all = [...status.changed, ...status.added];
   const containers = all.filter((item) => item.kind === "module").map((item) => `${item.path}/`);
   return all.filter((item) => !containers.some((prefix) => item.path.startsWith(prefix)));
@@ -336,6 +342,7 @@ export function destinationFor(account: HsAccount, item: RemoteItem, cwd: string
 interface RemoteDrift {
   byPath: Map<string, PathDrift>;
   targets: RemoteItem[];
+  baselines: Map<string, BaselineKind>;
 }
 
 async function reportRemoteDrift(
@@ -354,10 +361,20 @@ async function reportRemoteDrift(
     return undefined;
   }
 
-  const drift: RemoteDrift = { byPath: driftByPath(status, paths), targets: driftTargets(status) };
+  const drift: RemoteDrift = {
+    byPath: driftByPath(status, paths),
+    targets: driftTargets(status),
+    baselines: status.baselines,
+  };
 
   if (status.changed.length + status.added.length === 0) {
-    spinner.stop("HubSpot matches your local copy");
+    const quiet = describeQuietStatus(status);
+    spinner.stop(quiet.message, quiet.ok ? undefined : 1);
+    if (!quiet.ok) {
+      p.log.warn(
+        "A full re-download establishes the baseline; until then this check cannot report HubSpot-side edits."
+      );
+    }
     return drift;
   }
 
@@ -399,7 +416,9 @@ export async function fetchAction(
         ...paths.map((path) => ({
           value: path,
           label: menuLabel("path", path),
-          hint: describePathDrift(drift?.byPath.get(path)) ?? (drift ? "up to date" : undefined),
+          hint:
+            describePathDrift(drift?.byPath.get(path)) ??
+            (drift ? describeBaseline(drift.baselines.get(path)) : undefined),
         })),
         ...(paths.length > 1 ? [{ value: ALL, label: menuLabel("all", `All (${paths.length})`) }] : []),
         { value: BACK, label: menuLabel("back", "Back") },
@@ -470,7 +489,10 @@ export async function fetchAction(
 
   // Tree was clean before the fetch, so anything changed now came from HubSpot.
   if (gitState.inRepo) {
-    const synced = await changedFiles(cwd, gitState.scope);
+    const changed = await changedFiles(cwd, gitState.scope);
+    // Key-order-only JSON rewrites are dropped first, so "what changed" reflects
+    // HubSpot edits rather than its serializer.
+    const synced = failures === 0 ? await dropJsonNoise(cwd, gitState.scope, changed) : changed;
     if (synced.length === 0) {
       p.log.info(dim("Local already up to date — nothing to sync."));
       return;
@@ -484,6 +506,49 @@ export async function fetchAction(
     const message = `chore(hubspot): sync ${targets.join(", ")} from ${account.name}`;
     await reviewSyncedChanges(account, gitState.scope, synced.length, message, cwd);
   }
+}
+
+/**
+ * Revert JSON files whose only change is key order. HubSpot's serializer does
+ * not keep a stable order, so a re-download of an untouched module rewrites its
+ * `fields.json` byte for byte — dozens of meaningless diffs that bury the real
+ * ones in the review. Array order, which is meaningful in `fields.json`, is
+ * compared as-is.
+ *
+ * Returns the files that were left alone.
+ */
+async function dropJsonNoise(cwd: string, scope: string, files: string[]): Promise<string[]> {
+  const noise: string[] = [];
+  const real: string[] = [];
+
+  for (const file of files) {
+    if (!isJsonAsset(file)) {
+      real.push(file);
+      continue;
+    }
+    const before = await fileAtHead(cwd, file);
+    if (before === undefined) {
+      real.push(file); // new file: nothing to compare it against
+      continue;
+    }
+    try {
+      const after = await readFile(join(cwd, file), "utf8");
+      if (isJsonNoise(before, after)) noise.push(file);
+      else real.push(file);
+    } catch {
+      real.push(file);
+    }
+  }
+
+  if (noise.length === 0) return real;
+
+  if (await restoreFiles(cwd, noise)) {
+    p.log.info(dim(`${noise.length} JSON file(s) differed only in key order — reverted, not a HubSpot change.`));
+    return real;
+  }
+
+  p.log.warn(`Could not revert ${noise.length} key-order-only JSON file(s) — check git status in ${scope}.`);
+  return [...real, ...noise];
 }
 
 /**

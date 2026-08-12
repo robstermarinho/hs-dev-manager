@@ -14,7 +14,8 @@ vi.mock("../src/hs/remote-inventory.js", async (importOriginal) => {
 import { computeRemoteStatus } from "../src/actions/remote-status.js";
 import type { HsAccount } from "../src/hs/accounts.js";
 import { addPath, savePathsConfig } from "../src/state/paths-config.js";
-import { recordRemoteFiles, saveRemoteState } from "../src/state/remote-state.js";
+import { describeQuietStatus } from "../src/remote-status.js";
+import { recordRemoteFiles, saveRemoteState, sha256 } from "../src/state/remote-state.js";
 
 const account: HsAccount = { name: "example", accountId: "123456", isDefault: true };
 const SYNCED = new Date("2026-08-05T12:00:00.000Z");
@@ -48,7 +49,9 @@ async function workspace(options: WorkspaceOptions = {}): Promise<string> {
       recordRemoteFiles(
         { files: {} },
         "example-123456",
-        options.synced.map((remotePath) => ({ remotePath, sha256: "x" })),
+        // The real hash of the local content: a record that does not match what
+        // is on disk means the local copy diverged from the sync.
+        options.synced.map((remotePath) => ({ remotePath, sha256: sha256("local") })),
         SYNCED
       ),
       cwd
@@ -96,7 +99,11 @@ describe("computeRemoteStatus", () => {
     const cwd = await workspace({ localFiles: ["/theme/main.css"], synced: ["/theme/main.css"] });
     mocks.fetchRemoteInventory.mockResolvedValue([remoteItem("/theme/main.css", SYNCED.getTime())]);
 
-    await expect(computeRemoteStatus(account, cwd)).resolves.toEqual({ changed: [], added: [] });
+    await expect(computeRemoteStatus(account, cwd)).resolves.toEqual({
+      changed: [],
+      added: [],
+      baselines: new Map([["/theme", "recorded"]]),
+    });
   });
 
   it("ignores assets outside the portal's saved paths", async () => {
@@ -110,14 +117,45 @@ describe("computeRemoteStatus", () => {
       remoteItem("/other/site.css", SYNCED.getTime() + 3_600_000),
     ]);
 
-    await expect(computeRemoteStatus(account, cwd)).resolves.toEqual({ changed: [], added: [] });
+    await expect(computeRemoteStatus(account, cwd)).resolves.toEqual({
+      changed: [],
+      added: [],
+      baselines: new Map([["/theme", "recorded"]]),
+    });
   });
 
   it("does not call HubSpot when the portal has no saved paths", async () => {
     const cwd = await workspace({ paths: [] });
 
-    await expect(computeRemoteStatus(account, cwd)).resolves.toEqual({ changed: [], added: [] });
+    await expect(computeRemoteStatus(account, cwd)).resolves.toEqual({
+      changed: [],
+      added: [],
+      baselines: new Map(),
+    });
     expect(mocks.fetchRemoteInventory).not.toHaveBeenCalled();
+  });
+
+  it("reports a path whose local files no longer match the recorded sync", async () => {
+    // A git revert or a hand edit outside the tool leaves the recorded sync time
+    // describing content that is gone, so nothing can be compared against it.
+    const cwd = await workspace({ localFiles: ["/theme/main.css"], synced: ["/theme/main.css"] });
+    await writeFile(join(cwd, "src", "example-123456", "theme", "main.css"), "reverted", "utf8");
+    mocks.fetchRemoteInventory.mockResolvedValue([remoteItem("/theme/main.css", SYNCED.getTime())]);
+
+    const status = await computeRemoteStatus(account, cwd);
+
+    expect(status?.baselines.get("/theme")).toBe("diverged");
+    expect(describeQuietStatus(status!).ok).toBe(false);
+  });
+
+  it("ignores JSON key-order rewrites when judging divergence", async () => {
+    const cwd = await workspace({ localFiles: ["/theme/fields.json"], synced: ["/theme/fields.json"] });
+    await writeFile(join(cwd, "src", "example-123456", "theme", "fields.json"), "reordered", "utf8");
+    mocks.fetchRemoteInventory.mockResolvedValue([remoteItem("/theme/fields.json", SYNCED.getTime())]);
+
+    const status = await computeRemoteStatus(account, cwd);
+
+    expect(status?.baselines.get("/theme")).toBe("recorded");
   });
 
   it("is undefined when the inventory cannot be read", async () => {

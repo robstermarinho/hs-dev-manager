@@ -76,7 +76,7 @@ function downloadFrom(file: string) {
 beforeEach(() => {
   vi.clearAllMocks();
   prompts.confirm.mockResolvedValue(true);
-  remote.computeRemoteStatus.mockResolvedValue({ changed: [], added: [] });
+  remote.computeRemoteStatus.mockResolvedValue(inSync());
 });
 
 describe("fetchAction", () => {
@@ -152,6 +152,7 @@ describe("fetchAction", () => {
     remote.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [{ path: "/theme/modules/hero.module", updated: 3, kind: "module" }],
+      baselines: recordedFor("/theme", "/other"),
     });
     prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("commit");
 
@@ -201,6 +202,7 @@ describe("fetchAction", () => {
     remote.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [{ path: "/theme/modules/hero.module", updated: 3, kind: "module" }],
+      baselines: recordedFor("/theme", "/other"),
     });
     prompts.select
       .mockResolvedValueOnce("/theme")
@@ -233,6 +235,7 @@ describe("fetchAction", () => {
     remote.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("targeted");
 
@@ -265,6 +268,7 @@ describe("fetchAction", () => {
         { path: "/other/site.css", updated: 2, kind: "file" },
       ],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     prompts.select
       .mockResolvedValueOnce("/theme")
@@ -287,6 +291,7 @@ describe("fetchAction", () => {
     remote.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     prompts.select
       .mockResolvedValueOnce("/theme")
@@ -308,6 +313,7 @@ describe("fetchAction", () => {
         { path: "/theme/modules/hero.module/module.html", updated: 3, kind: "file" },
       ],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     prompts.select
       .mockResolvedValueOnce("/theme")
@@ -322,6 +328,48 @@ describe("fetchAction", () => {
 
     expect(fetcher).toHaveBeenCalledTimes(1);
     expect(fetcher).toHaveBeenCalledWith(account, "/theme/modules/hero.module", cwd, expect.anything());
+  });
+
+  it("reverts JSON files that only came back with their keys reordered", async () => {
+    const { cwd } = await createRepo();
+    const fields = join(cwd, "src", "example-123456", "theme", "fields.json");
+    const original = '[\n  {\n    "display_width" : null,\n    "type" : "text"\n  }\n]\n';
+    await writeFile(fields, original, "utf8");
+    await execa("git", ["add", "."], { cwd });
+    await execa("git", ["commit", "-m", "fields", "--quiet"], { cwd });
+
+    // Only the path is answered: the review prompt is never reached, and a
+    // queued answer would leak into the next test.
+    prompts.select.mockResolvedValueOnce("/theme");
+
+    await fetchAction(account, cwd, async () => {
+      // Same fields, the order HubSpot's serializer happened to pick this time.
+      await writeFile(fields, '[\n  {\n    "type" : "text",\n    "display_width" : null\n  }\n]\n', "utf8");
+      return true;
+    });
+
+    expect(await readFile(fields, "utf8")).toBe(original);
+    expect(prompts.info).toHaveBeenCalledWith(expect.stringContaining("only in key order"));
+    // Nothing of substance came down, so there is nothing to commit.
+    expect((await execa("git", ["rev-list", "--count", "HEAD"], { cwd })).stdout).toBe("2");
+  });
+
+  it("keeps a JSON file whose values actually changed", async () => {
+    const { cwd } = await createRepo();
+    const fields = join(cwd, "src", "example-123456", "theme", "fields.json");
+    await writeFile(fields, '[{ "type": "text" }]\n', "utf8");
+    await execa("git", ["add", "."], { cwd });
+    await execa("git", ["commit", "-m", "fields", "--quiet"], { cwd });
+
+    prompts.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("commit");
+
+    await fetchAction(account, cwd, async () => {
+      await writeFile(fields, '[{ "type": "richtext" }]\n', "utf8");
+      return true;
+    });
+
+    expect(await readFile(fields, "utf8")).toBe('[{ "type": "richtext" }]\n');
+    expect(prompts.success).toHaveBeenCalledWith(expect.stringContaining("Sync commit created"));
   });
 });
 
@@ -409,3 +457,13 @@ describe("driftTargets", () => {
     ]);
   });
 });
+
+/** Baseline map for a check that had a recorded sync for every saved path. */
+function recordedFor(...paths: string[]): Map<string, "recorded"> {
+  return new Map(paths.map((path) => [path, "recorded"]));
+}
+
+/** A clean check: nothing drifted and every saved path had a real baseline. */
+function inSync(...paths: string[]) {
+  return { changed: [], added: [], baselines: recordedFor(...(paths.length > 0 ? paths : ["/theme"])) };
+}

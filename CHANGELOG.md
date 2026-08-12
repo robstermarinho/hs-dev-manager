@@ -2,6 +2,18 @@
 
 Notable changes to `hs-dev-manager`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **The drift check reported "HubSpot matches your local copy" when it had nothing to compare against.** A portal with no sync records — every repo carried over from the bash version — had no baseline, and the missing baseline was rendered as an all-clear, hiding real Design Manager edits. Paths that cannot be compared are now named as unverified, in the headline, in the per-path hints, and in watch, which falls back to asking instead of starting on a copy it cannot vouch for.
+- **A local copy that no longer matches its recorded sync is now detected.** A `git checkout`, a discarded fetch, or an edit made outside the tool leaves the recorded timestamp describing content that is gone, and every comparison against it reads as "in sync". Those paths are reported as unverified instead.
+- **Repos with no sync records now compare against local file times** rather than giving up. It dates the local write, not a verified match, so the headline says so.
+
+### Changed
+
+- **JSON files that came back only with their keys reordered are reverted after a fetch.** HubSpot does not serialize `fields.json` with a stable key order, so re-downloading an untouched theme rewrote dozens of them byte for byte and buried the real changes in the review. Array order, which is the field order shown in the editor, is still compared as-is.
+
 ## [0.2.0] — 2026-08-06
 
 Everything the tool sends to or takes from HubSpot now starts from knowing what changed there. In 0.1.0, fetch overwrote and deploy uploaded without ever comparing, so an edit made in the Design Manager was lost without a word.

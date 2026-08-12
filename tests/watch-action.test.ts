@@ -87,7 +87,7 @@ afterEach(() => {
 describe("watchAction", () => {
   it("starts watching without asking when HubSpot matches the local copy", async () => {
     const cwd = await workspace();
-    mocks.computeRemoteStatus.mockResolvedValue({ changed: [], added: [] });
+    mocks.computeRemoteStatus.mockResolvedValue(inSync());
     mocks.select.mockResolvedValueOnce("/theme");
 
     await watchAction(account, cwd);
@@ -107,6 +107,7 @@ describe("watchAction", () => {
     mocks.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [{ path: "/theme/modules/hero.module", updated: 3, kind: "module" }],
+      baselines: recordedFor("/theme"),
     });
     mocks.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("targeted");
 
@@ -128,6 +129,7 @@ describe("watchAction", () => {
     mocks.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     mocks.portalGitState.mockResolvedValue({ inRepo: true, scope: "src/example-123456", dirty: [] });
     mocks.changedFiles.mockResolvedValue(["src/example-123456/theme/main.css"]);
@@ -151,6 +153,7 @@ describe("watchAction", () => {
     mocks.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     mocks.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("targeted");
 
@@ -164,6 +167,7 @@ describe("watchAction", () => {
     mocks.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     mocks.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("__skip__");
 
@@ -178,6 +182,7 @@ describe("watchAction", () => {
     mocks.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     mocks.select.mockResolvedValueOnce("/theme").mockResolvedValueOnce("__back__");
 
@@ -191,6 +196,7 @@ describe("watchAction", () => {
     mocks.computeRemoteStatus.mockResolvedValue({
       changed: [{ path: "/theme/main.css", updated: 2, kind: "file" }],
       added: [],
+      baselines: recordedFor("/theme"),
     });
     mocks.portalGitState.mockResolvedValue({
       inRepo: true,
@@ -231,3 +237,13 @@ describe("watchAction", () => {
     expect(mocks.streamHs).toHaveBeenCalled();
   });
 });
+
+/** Baseline map for a check that had a recorded sync for every saved path. */
+function recordedFor(...paths: string[]): Map<string, "recorded"> {
+  return new Map(paths.map((path) => [path, "recorded"]));
+}
+
+/** A clean check: nothing drifted and every saved path had a real baseline. */
+function inSync(...paths: string[]) {
+  return { changed: [], added: [], baselines: recordedFor(...(paths.length > 0 ? paths : ["/theme"])) };
+}
