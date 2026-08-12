@@ -1,6 +1,6 @@
 {
   "name": "hs-dev-manager",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Interactive CLI for safely managing HubSpot Design Manager files across multiple accounts",
   "type": "module",
   "bin": {
