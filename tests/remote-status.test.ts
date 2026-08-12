@@ -2,18 +2,23 @@ import { describe, expect, it } from "vitest";
 import type { RemoteItem } from "../src/hs/remote-inventory.js";
 import { normalizeTemplatePath, normalizeWidgetPath, parseV4Page } from "../src/hs/remote-inventory.js";
 import {
+  type BaselineKind,
   CLOCK_TOLERANCE_MS,
   compareRemote,
+  describeBaseline,
   describePathDrift,
+  describeQuietStatus,
   describeRemoteStatus,
   driftByPath,
   driftLines,
+  inferredPaths,
   inventoryIndex,
   inventoryUpdatedFor,
   isRemoteCheckDisabled,
   isUnchangedSince,
   isUnder,
   REMOTE_CHECK_ENV,
+  unverifiedPaths,
 } from "../src/remote-status.js";
 import { recordRemoteFiles, syncedAtLookup } from "../src/state/remote-state.js";
 
@@ -118,13 +123,40 @@ describe("compareRemote", () => {
     expect(status.changed).toEqual([]);
   });
 
-  it("stays quiet about assets it never synced", () => {
+  it("reports a path it never synced as unverified instead of in sync", () => {
+    // Reporting these as "in sync" is what let real HubSpot edits go unnoticed
+    // in repos migrated from the bash version, which have no sync records.
     const status = compareRemote({
       ...base,
       syncedAt: () => undefined,
       items: [item("/theme/main.css", Date.now())],
     });
-    expect(status).toEqual({ changed: [], added: [] });
+    expect(status.changed).toEqual([]);
+    expect(status.added).toEqual([]);
+    expect(unverifiedPaths(status)).toEqual(["/theme"]);
+    expect(describeQuietStatus(status).ok).toBe(false);
+  });
+
+  it("falls back to the local write time when there is no sync record", () => {
+    const status = compareRemote({
+      ...base,
+      syncedAt: () => undefined,
+      localModifiedAt: () => SYNCED,
+      items: [item("/theme/main.css", SYNCED + 600_000), item("/theme/old.css", SYNCED - 600_000)],
+    });
+    expect(status.changed.map((entry) => entry.path)).toEqual(["/theme/main.css"]);
+    expect(inferredPaths(status)).toEqual(["/theme"]);
+    expect(describeQuietStatus(status).ok).toBe(true);
+  });
+
+  it("keeps the weakest baseline found under a path", () => {
+    const status = compareRemote({
+      ...base,
+      syncedAt: (path) => (path === "/theme/main.css" ? SYNCED : undefined),
+      localModifiedAt: () => undefined,
+      items: [item("/theme/main.css", SYNCED), item("/theme/other.css", SYNCED)],
+    });
+    expect(status.baselines.get("/theme")).toBe("missing");
   });
 
   it("ignores anything outside the saved paths", () => {
@@ -132,7 +164,47 @@ describe("compareRemote", () => {
       ...base,
       items: [item("/other-theme/main.css", SYNCED + 600_000)],
     });
-    expect(status).toEqual({ changed: [], added: [] });
+    expect(status.changed).toEqual([]);
+    expect(status.added).toEqual([]);
+    // Nothing comparable came back for the saved path, so it has no baseline
+    // either — an empty comparison is not evidence of being up to date.
+    expect(unverifiedPaths(status)).toEqual(["/theme"]);
+  });
+});
+
+describe("describeQuietStatus", () => {
+  const quiet = (baselines: [string, BaselineKind][]) => ({
+    changed: [],
+    added: [],
+    baselines: new Map(baselines),
+  });
+
+  it("only claims a match when every path had a recorded sync", () => {
+    expect(describeQuietStatus(quiet([["/theme", "recorded"]]))).toEqual({
+      message: "HubSpot matches your local copy",
+      ok: true,
+    });
+  });
+
+  it("says what the comparison rested on when it was inferred", () => {
+    const result = describeQuietStatus(quiet([["/theme", "inferred"]]));
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain("local file times");
+  });
+
+  it("names the unverifiable paths and does not report success", () => {
+    const result = describeQuietStatus(quiet([["/theme", "recorded"], ["/other", "missing"]]));
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("/other");
+    expect(result.message).not.toContain("/theme");
+  });
+});
+
+describe("describeBaseline", () => {
+  it("distinguishes a verified path from an unverified one", () => {
+    expect(describeBaseline("recorded")).toBe("up to date");
+    expect(describeBaseline("inferred")).toContain("file times");
+    expect(describeBaseline("missing")).toContain("unverified");
   });
 });
 

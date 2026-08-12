@@ -16,12 +16,35 @@ export function isRemoteCheckDisabled(env: NodeJS.ProcessEnv = process.env): boo
   return value ? ["1", "true", "yes"].includes(value.trim().toLowerCase()) : false;
 }
 
+/**
+ * Where the "we were in sync at this time" baseline of a saved path came from.
+ *
+ * - `recorded`: this tool synced the assets and wrote `db/remote-state.json`.
+ * - `inferred`: no record, so local file times stand in for it — good enough for
+ *   repos migrated from the bash version, but it dates the local *write*, not a
+ *   verified match with HubSpot.
+ * - `diverged`: there is a record, but the local files no longer match it, so
+ *   the recorded time no longer describes the working copy.
+ * - `missing`: neither. Nothing can be said about the path, and saying nothing
+ *   must never be rendered as "in sync".
+ */
+export type BaselineKind = "recorded" | "inferred" | "diverged" | "missing";
+
+const BASELINE_RANK: Record<BaselineKind, number> = {
+  recorded: 0,
+  inferred: 1,
+  diverged: 2,
+  missing: 3,
+};
+
 export interface RemoteStatusInput {
   items: RemoteItem[];
   /** Saved remote paths of the portal; anything outside them is ignored. */
   paths: string[];
   /** Last sync time (epoch ms) recorded for a remote path, if any. */
   syncedAt: (remotePath: string) => number | undefined;
+  /** Fallback baseline: newest local write time under a remote path, if readable. */
+  localModifiedAt?: (remotePath: string) => number | undefined;
   /** Whether the remote path has a local counterpart on disk. */
   existsLocally: (remotePath: string) => boolean;
   toleranceMs?: number;
@@ -32,6 +55,8 @@ export interface RemoteStatus {
   changed: RemoteItem[];
   /** Assets that exist on HubSpot but not locally. */
   added: RemoteItem[];
+  /** Baseline quality per saved path — the weakest one found under it. */
+  baselines: Map<string, BaselineKind>;
 }
 
 export function isUnder(remotePath: string, savedPath: string): boolean {
@@ -42,6 +67,19 @@ export function compareRemote(input: RemoteStatusInput): RemoteStatus {
   const tolerance = input.toleranceMs ?? CLOCK_TOLERANCE_MS;
   const changed: RemoteItem[] = [];
   const added: RemoteItem[] = [];
+  // A saved path with nothing comparable under it has no baseline either: an
+  // empty comparison is not evidence of being up to date. Items then lower the
+  // verdict from `recorded` as needed — the weakest one under a path wins.
+  const baselines = new Map<string, BaselineKind>(input.paths.map((path) => [path, "missing"]));
+  const compared = new Set<string>();
+
+  const rateBaseline = (remotePath: string, kind: BaselineKind): void => {
+    const owner = input.paths.find((path) => isUnder(remotePath, path));
+    if (owner === undefined) return;
+    const current = compared.has(owner) ? baselines.get(owner) : undefined;
+    compared.add(owner);
+    if (current === undefined || BASELINE_RANK[kind] > BASELINE_RANK[current]) baselines.set(owner, kind);
+  };
 
   for (const item of input.items) {
     if (!input.paths.some((saved) => isUnder(item.path, saved))) continue;
@@ -51,15 +89,94 @@ export function compareRemote(input: RemoteStatusInput): RemoteStatus {
       continue;
     }
 
-    // No sync record means we have nothing to compare against — stay quiet
-    // rather than flagging every file the first time.
-    const synced = input.syncedAt(item.path);
-    if (synced === undefined) continue;
+    // No sync record: fall back to when the local copy was written. Without even
+    // that, the asset stays uncomparable and the path is reported as such —
+    // never as "in sync", which is what made real remote edits invisible.
+    const recorded = input.syncedAt(item.path);
+    const baseline = recorded ?? input.localModifiedAt?.(item.path);
+    if (baseline === undefined) {
+      rateBaseline(item.path, "missing");
+      continue;
+    }
+    rateBaseline(item.path, recorded === undefined ? "inferred" : "recorded");
 
-    if (item.updated > synced + tolerance) changed.push(item);
+    if (item.updated > baseline + tolerance) changed.push(item);
   }
 
-  return { changed, added };
+  return { changed, added, baselines };
+}
+
+/**
+ * The drift sets alone. Most consumers only summarize what moved and do not care
+ * where the baseline came from.
+ */
+export type RemoteDriftSets = Pick<RemoteStatus, "changed" | "added">;
+
+/**
+ * Downgrade the paths whose local files no longer match the sync they were
+ * recorded at — a git checkout, a revert or a hand edit outside the tool. Their
+ * recorded timestamp still says "synced", but it no longer describes what is on
+ * disk, so no comparison against it can be trusted.
+ */
+export function applyDivergence(status: RemoteStatus, divergedPaths: Iterable<string>): RemoteStatus {
+  const baselines = new Map(status.baselines);
+  for (const path of divergedPaths) {
+    const current = baselines.get(path);
+    if (current === undefined || BASELINE_RANK.diverged > BASELINE_RANK[current]) {
+      baselines.set(path, "diverged");
+    }
+  }
+  return { ...status, baselines };
+}
+
+/** Saved paths whose local copy drifted away from the recorded sync. */
+export function divergedPaths(status: RemoteStatus): string[] {
+  return [...status.baselines].filter(([, kind]) => kind === "diverged").map(([path]) => path);
+}
+
+/** Saved paths whose freshness the check could not establish at all. */
+export function unverifiedPaths(status: RemoteStatus): string[] {
+  return [...status.baselines].filter(([, kind]) => kind === "missing").map(([path]) => path);
+}
+
+/** Saved paths compared against local file times rather than a recorded sync. */
+export function inferredPaths(status: RemoteStatus): string[] {
+  return [...status.baselines].filter(([, kind]) => kind === "inferred").map(([path]) => path);
+}
+
+/**
+ * Headline for a check that found no drift. Never a bare "matches your local
+ * copy" when part of the portal could not be compared — that phrasing turned
+ * "no answer" into a false all-clear.
+ */
+export function describeQuietStatus(status: RemoteStatus): { message: string; ok: boolean } {
+  const diverged = divergedPaths(status);
+  if (diverged.length > 0) {
+    return {
+      message: `Local copy of ${diverged.join(", ")} no longer matches its last sync — cannot compare with HubSpot`,
+      ok: false,
+    };
+  }
+  const unverified = unverifiedPaths(status);
+  if (unverified.length > 0) {
+    return {
+      message: `No sync baseline for ${unverified.join(", ")} — cannot tell whether HubSpot differs`,
+      ok: false,
+    };
+  }
+  const inferred = inferredPaths(status);
+  if (inferred.length > 0) {
+    return { message: "No newer changes on HubSpot (compared against local file times)", ok: true };
+  }
+  return { message: "HubSpot matches your local copy", ok: true };
+}
+
+/** Per-path hint for the fetch menu when nothing under it drifted. */
+export function describeBaseline(kind: BaselineKind | undefined): string {
+  if (kind === "missing") return "no baseline — unverified";
+  if (kind === "diverged") return "local copy differs from last sync — unverified";
+  if (kind === "inferred") return "up to date (by file times)";
+  return "up to date";
 }
 
 export interface PathDrift {
@@ -68,7 +185,7 @@ export interface PathDrift {
 }
 
 /** How much drift sits under each saved path, for per-path hints. */
-export function driftByPath(status: RemoteStatus, paths: string[]): Map<string, PathDrift> {
+export function driftByPath(status: RemoteDriftSets, paths: string[]): Map<string, PathDrift> {
   const byPath = new Map<string, PathDrift>(paths.map((path) => [path, { changed: 0, added: 0 }]));
   for (const [key, items] of [
     ["changed", status.changed],
@@ -94,7 +211,7 @@ export function describePathDrift(drift: PathDrift | undefined): string | undefi
 }
 
 /** One line per drifted asset, newest first, capped so the note stays readable. */
-export function driftLines(status: RemoteStatus, limit = 12): string[] {
+export function driftLines(status: RemoteDriftSets, limit = 12): string[] {
   const entries = [
     ...status.changed.map((item) => ({ label: "changed", item })),
     ...status.added.map((item) => ({ label: "new", item })),
@@ -150,7 +267,7 @@ export function isUnchangedSince(
 }
 
 /** Badge text for the fetch menu entry; undefined when nothing is out of date. */
-export function describeRemoteStatus(status: RemoteStatus): string | undefined {
+export function describeRemoteStatus(status: RemoteDriftSets): string | undefined {
   const parts: string[] = [];
   if (status.changed.length > 0) {
     parts.push(`${status.changed.length} changed on HubSpot`);

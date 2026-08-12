@@ -79,6 +79,22 @@ export async function diffScope(cwd: string, scope: string, mode: "full" | "stat
 }
 
 /**
+ * Content of a tracked file as of HEAD. Undefined when the file is not in HEAD
+ * (a fetch just created it) or git cannot read it.
+ */
+export async function fileAtHead(cwd: string, file: string): Promise<string | undefined> {
+  const result = await git(["show", `HEAD:${file}`], cwd);
+  return result.ok ? result.stdout : undefined;
+}
+
+/** Restore specific files from HEAD, discarding their working-tree changes. */
+export async function restoreFiles(cwd: string, files: string[]): Promise<boolean> {
+  if (files.length === 0) return true;
+  await git(["reset", "--quiet", "--", ...files], cwd);
+  return (await git(["checkout", "--", ...files], cwd)).ok;
+}
+
+/**
  * Undo every change in a scope: unstage, restore tracked files from HEAD and
  * delete files that are not in HEAD. Destructive — only safe when the scope was
  * clean before the change being undone. Verified by re-reading git status.
