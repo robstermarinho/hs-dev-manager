@@ -2,7 +2,9 @@
 
 Notable changes to `hs-dev-manager`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] — 2026-08-12
+
+The drift check added in 0.2.0 answered "is my copy current?" with a yes whenever it had nothing to compare against. This release makes it say so instead, and stops HubSpot's JSON formatting from burying what a fetch actually brought down.
 
 ### Added
 
