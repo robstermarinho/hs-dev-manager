@@ -11,8 +11,15 @@ import { countIssues, errorsOf, renderLintResults } from "../lint.js";
 import { portalScope, remotePathFor } from "../paths.js";
 import { isRemoteCheckDisabled, REMOTE_CHECK_ENV } from "../remote-status.js";
 import { addDeploy, loadHistory, saveHistory, timestampNow } from "../state/history.js";
-import { loadRemoteState, recordRemoteFiles, saveRemoteState, sha256 } from "../state/remote-state.js";
+import {
+  forgetRemoteFiles,
+  loadRemoteState,
+  recordRemoteFiles,
+  saveRemoteState,
+  sha256,
+} from "../state/remote-state.js";
 import { colorizeDiff, dim, handleCancel, menuLabel } from "../ui.js";
+import { NO_DELETIONS, planDeletions, runDeletions } from "./deploy-delete.js";
 import { lintFiles } from "./lint.js";
 import { checkRemoteConflicts, conflictsOf, unverifiedOf, type RemoteConflict } from "./remote-check.js";
 
@@ -178,12 +185,13 @@ async function showConflictDiff(conflicts: RemoteConflict[], cwd: string): Promi
 }
 
 /**
- * Remember what was just uploaded: the local content is now the remote content,
- * so the next deploy can tell HubSpot-side edits from our own.
+ * Remember what this deploy left on HubSpot: an uploaded file's local content is
+ * now the remote content, so the next deploy can tell HubSpot-side edits from
+ * our own, and a deleted file has no remote copy left to compare against.
  */
-async function recordSyncedUploads(account: HsAccount, files: string[], cwd: string): Promise<void> {
+async function recordSyncState(account: HsAccount, uploaded: string[], deleted: string[], cwd: string): Promise<void> {
   const entries: { remotePath: string; sha256: string }[] = [];
-  for (const file of files) {
+  for (const file of uploaded) {
     const remotePath = remotePathFor(account, file);
     if (!remotePath) continue;
     try {
@@ -192,38 +200,25 @@ async function recordSyncedUploads(account: HsAccount, files: string[], cwd: str
       // Unreadable right after a successful upload: skip, it stays unverified.
     }
   }
-  if (entries.length === 0) return;
+  const removed = deleted
+    .map((file) => remotePathFor(account, file))
+    .filter((remotePath): remotePath is string => Boolean(remotePath));
+  if (entries.length === 0 && removed.length === 0) return;
   try {
-    const state = await loadRemoteState(cwd);
-    await saveRemoteState(recordRemoteFiles(state, portalKey(account), entries), cwd);
+    const key = portalKey(account);
+    const state = forgetRemoteFiles(recordRemoteFiles(await loadRemoteState(cwd), key, entries), key, removed);
+    await saveRemoteState(state, cwd);
   } catch (error) {
     p.log.warn(`Could not record the remote sync state: ${error instanceof Error ? error.message : error}`);
   }
 }
 
-/** Menu action: upload changed files (git-detected) and commit them. */
-export async function deployAction(account: HsAccount, cwd: string = process.cwd()): Promise<void> {
-  if (!(await isGitRepo(cwd))) {
-    p.log.warn("Deploy requires a git repository (changes are detected via git status).");
-    return;
-  }
-
-  const scope = portalScope(account);
-  const changed = filterDeployable(await changedFiles(cwd, scope));
-  if (changed.length === 0) {
-    p.log.warn(`No changes in ${scope}.`);
-    return;
-  }
-
-  const deleted = changed.filter((file) => !existsSync(join(cwd, file)));
-  const uploadable = changed.filter((file) => existsSync(join(cwd, file)));
-  if (deleted.length > 0) {
-    p.log.warn(
-      `${deleted.length} file(s) were deleted locally and will be skipped (remove them on HubSpot with: hs cms delete):\n${deleted.map((f) => `  ${f}`).join("\n")}`
-    );
-  }
-  if (uploadable.length === 0) return;
-
+/**
+ * Pick the files to upload, then lint them and compare them against HubSpot.
+ * Returns the files still meant to be uploaded (possibly none), or undefined
+ * when the deploy should be aborted.
+ */
+async function resolveUploads(account: HsAccount, uploadable: string[], cwd: string): Promise<string[] | undefined> {
   const selected =
     uploadable.length === 1
       ? uploadable
@@ -240,31 +235,69 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
 
   // Cheapest gate first: broken syntax is worth catching before any network call.
   const linted = await resolveLintErrors(selected, cwd);
-  if (!linted || linted.length === 0) return;
+  if (!linted || linted.length === 0) return linted;
 
   // Ask before spending time on a commit message: the remote may have moved.
-  let toUpload: string[] | undefined = linted;
   if (isRemoteCheckDisabled()) {
     p.log.warn(
       `${REMOTE_CHECK_ENV} is set: uploading without comparing against HubSpot, so edits made there are overwritten silently.`
     );
-  } else {
-    toUpload = await resolveRemoteConflicts(account, linted, cwd);
+    return linted;
   }
-  if (!toUpload || toUpload.length === 0) return;
+  return resolveRemoteConflicts(account, linted, cwd);
+}
+
+/** Default commit message for what the deploy is about to do. */
+export function defaultDeployMessage(uploads: number, deletions: number, portal: string): string {
+  if (uploads === 0) return `feat(hubspot): delete ${deletions} file(s) on ${portal}`;
+  if (deletions === 0) return `feat(hubspot): deploy ${uploads} file(s) to ${portal}`;
+  return `feat(hubspot): deploy ${uploads} file(s) to ${portal}, delete ${deletions}`;
+}
+
+/** Menu action: upload changed files (git-detected), mirror local deletions, and commit both. */
+export async function deployAction(account: HsAccount, cwd: string = process.cwd()): Promise<void> {
+  if (!(await isGitRepo(cwd))) {
+    p.log.warn("Deploy requires a git repository (changes are detected via git status).");
+    return;
+  }
+
+  const scope = portalScope(account);
+  const changed = filterDeployable(await changedFiles(cwd, scope));
+  if (changed.length === 0) {
+    p.log.warn(`No changes in ${scope}.`);
+    return;
+  }
+
+  const deleted = changed.filter((file) => !existsSync(join(cwd, file)));
+  const uploadable = changed.filter((file) => existsSync(join(cwd, file)));
+
+  let toUpload: string[] = [];
+  if (uploadable.length > 0) {
+    const resolved = await resolveUploads(account, uploadable, cwd);
+    if (!resolved) return;
+    toUpload = resolved;
+  }
+
+  // Asked last: by now every reason to abort the uploads has come up, so the
+  // destructive question is not answered for a deploy that never happens.
+  const plan = deleted.length > 0 ? await planDeletions(account, deleted, cwd) : NO_DELETIONS;
+  const deletionCount = plan.remote.length + plan.gone.length;
+  if (toUpload.length === 0 && deletionCount === 0) return;
 
   const message = handleCancel(
     await p.text({
       message: "Commit message",
-      initialValue: `feat(hubspot): deploy ${toUpload.length} file(s) to ${account.name}`,
+      initialValue: defaultDeployMessage(toUpload.length, deletionCount, account.name),
       validate: (value) => (value?.trim() ? undefined : "Enter a message"),
     })
   );
 
-  const confirmed = handleCancel(
-    await p.confirm({ message: `Upload ${toUpload.length} file(s) to ${account.name} (${account.accountId})?` })
-  );
-  if (!confirmed) return;
+  if (toUpload.length > 0) {
+    const confirmed = handleCancel(
+      await p.confirm({ message: `Upload ${toUpload.length} file(s) to ${account.name} (${account.accountId})?` })
+    );
+    if (!confirmed) return;
+  }
 
   const succeeded: string[] = [];
   const failed: string[] = [];
@@ -291,24 +324,38 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
     }
   }
 
-  if (succeeded.length === 0) {
-    p.log.error("All uploads failed. Nothing committed.");
+  // Every upload failing points at the connection or the account, which is no
+  // state to start deleting in.
+  if (toUpload.length > 0 && succeeded.length === 0) {
+    p.log.error(
+      plan.remote.length > 0
+        ? "All uploads failed. Nothing deleted on HubSpot, nothing committed."
+        : "All uploads failed. Nothing committed."
+    );
     return;
   }
 
-  await recordSyncedUploads(account, succeeded, cwd);
+  const deletion = await runDeletions(account, plan);
+  const done = [...succeeded, ...deletion.deleted];
+  if (done.length === 0) {
+    p.log.error("Nothing was deleted on HubSpot. Nothing committed.");
+    return;
+  }
 
-  // Commit only the uploaded files so unselected (or failed) changes stay in the tree.
-  const committed = await commitScoped(cwd, succeeded, message);
+  await recordSyncState(account, succeeded, deletion.deleted, cwd);
+
+  // Commit only what now holds on HubSpot, so unselected (or failed) changes stay in the tree.
+  const committed = await commitScoped(cwd, done, message);
   if (committed) {
     p.log.success(`Committed: ${message}`);
   } else {
     p.log.warn("Git commit failed or nothing to commit.");
   }
 
-  // History status tracks the upload outcome only; a commit failure is
-  // surfaced separately and must not mislabel a fully uploaded deploy.
-  const status = failed.length === 0 ? "success" : "partial";
+  // History status tracks the HubSpot outcome only; a commit failure is
+  // surfaced separately and must not mislabel a fully applied deploy.
+  const problems = failed.length + deletion.failed.length;
+  const status = problems === 0 ? "success" : "partial";
 
   try {
     const history = await loadHistory(cwd);
@@ -321,18 +368,24 @@ export async function deployAction(account: HsAccount, cwd: string = process.cwd
         status,
         file_count: succeeded.length,
         files: succeeded,
+        ...(deletion.deleted.length > 0 ? { deleted_files: deletion.deleted } : {}),
       }),
       cwd
     );
   } catch (error) {
-    p.log.warn(`Upload finished, but deploy history could not be saved: ${error instanceof Error ? error.message : error}`);
+    p.log.warn(`Deploy finished, but deploy history could not be saved: ${error instanceof Error ? error.message : error}`);
   }
 
+  const summary = [
+    succeeded.length > 0 ? `${succeeded.length} file(s) uploaded` : "",
+    deletion.deleted.length > 0 ? `${deletion.deleted.length} deleted` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+
   if (status === "success") {
-    p.log.success(`Deploy complete: ${succeeded.length} file(s) uploaded.`);
+    p.log.success(`Deploy complete: ${summary}.`);
   } else {
-    p.log.warn(
-      `Partial deploy: ${succeeded.length} uploaded, ${failed.length} failed${committed ? "" : ", git commit not created"}.`
-    );
+    p.log.warn(`Partial deploy: ${summary}, ${problems} failed${committed ? "" : ", git commit not created"}.`);
   }
 }

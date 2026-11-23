@@ -54,6 +54,16 @@ export function recordRemoteFiles(
   return { files };
 }
 
+/** Drop the records of remote files that no longer exist (returns a new state). */
+export function forgetRemoteFiles(state: RemoteState, portalKey: string, remotePaths: string[]): RemoteState {
+  if (remotePaths.length === 0) return state;
+  const files = { ...state.files };
+  for (const remotePath of remotePaths) {
+    delete files[remoteStateKey(portalKey, remotePath)];
+  }
+  return { files };
+}
+
 /** Last synced hash for a remote file, undefined when it was never synced by this tool. */
 export function syncedHash(state: RemoteState, portalKey: string, remotePath: string): string | undefined {
   const record = state.files[remoteStateKey(portalKey, remotePath)];
