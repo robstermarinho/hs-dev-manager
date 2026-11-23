@@ -2,6 +2,20 @@
 
 Notable changes to `hs-dev-manager`. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Deploy can delete on HubSpot the files you deleted locally.** They used to be listed with a note to run `hs cms delete` yourself, which left the Design Manager holding files the repo no longer had. Deploy now asks which of them to delete there too. Nothing is selected up front and the confirmation defaults to no, since the Design Manager has no trash. Each file is compared against HubSpot first: one edited there since your last sync is called out before it is lost, and one that is already gone is simply committed. The deletion lands in the same commit as the uploads and shows up in the deploy history.
+
+### Fixed
+
+- **A failed `hs cms delete` is not taken for a success.** The command exits 0 even when HubSpot refuses the request, so the result is read from its output instead of its exit code.
+
+### Changed
+
+- Development dependencies: vitest 5, which clears the `npm audit` findings that vitest 3 carried.
+
 ## [0.3.0] — 2026-08-12
 
 The drift check added in 0.2.0 answered "is my copy current?" with a yes whenever it had nothing to compare against. This release makes it say so instead, and stops HubSpot's JSON formatting from burying what a fetch actually brought down.

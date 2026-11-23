@@ -17,13 +17,15 @@ function statusIcon(deploy: DeployRecord): string {
 /** Full record of one deploy: what, where, when, and the file tree. */
 function showDeploy(deploy: DeployRecord, scope: string): void {
   const files = deploy.files.map((file) => scopeRelative(file, scope));
+  const deleted = (deploy.deleted_files ?? []).map((file) => scopeRelative(file, scope));
+  const counts = [`${deploy.file_count} file(s)`, ...(deleted.length > 0 ? [`${deleted.length} deleted`] : [])];
   const header = [
     deploy.message,
     dim(
-      `${deploy.status === "success" ? "uploaded" : "partial upload"} · ${deploy.file_count} file(s) · ${deploy.portal} (${deploy.portal_id})`
+      `${deploy.status === "success" ? "uploaded" : "partial upload"} · ${counts.join(" · ")} · ${deploy.portal} (${deploy.portal_id})`
     ),
-    "",
-    renderTree(files),
+    ...(files.length > 0 ? ["", renderTree(files)] : []),
+    ...(deleted.length > 0 ? ["", dim("Deleted on HubSpot"), renderTree(deleted)] : []),
   ].join("\n");
   p.note(header, `${statusIcon(deploy)} ${deploy.timestamp} ${dim(`(${deployAge(deploy.timestamp)})`)}`);
 }

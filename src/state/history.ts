@@ -13,6 +13,11 @@ export interface DeployRecord {
   status: "success" | "partial";
   file_count: number;
   files: string[];
+  /**
+   * Files this deploy deleted on HubSpot. Optional and only written when there
+   * are any, so records stay readable by the sh version, which never had it.
+   */
+  deleted_files?: string[];
 }
 
 export interface DeployHistory {

@@ -51,10 +51,14 @@ export interface DeployRow {
 }
 
 export function deployRow(deploy: DeployRecord, scope: string, now: Date = new Date()): DeployRow {
+  const deleted = deploy.deleted_files ?? [];
+  // A deploy that only deleted has no uploaded file to show: lead with the deletions.
+  const deleteOnly = deploy.files.length === 0 && deleted.length > 0;
+  const summary = summarizeFiles(deleteOnly ? deleted : deploy.files, scope);
   return {
     age: deployAge(deploy.timestamp, now),
-    files: fileCountLabel(deploy.file_count),
-    summary: summarizeFiles(deploy.files, scope),
+    files: deleteOnly ? `${deleted.length} deleted` : fileCountLabel(deploy.file_count),
+    summary: !deleteOnly && deleted.length > 0 ? `${summary} · ${deleted.length} deleted` : summary,
     ok: deploy.status === "success",
   };
 }

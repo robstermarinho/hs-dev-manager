@@ -72,7 +72,7 @@ Pick your account, then **Paths → Configure new path**. Browse the Design Mana
 Edit the downloaded files with your own editor, then from the menu:
 
 - **Watch** uploads each file as you save it — best for iterating on styles and templates.
-- **Deploy** lets you pick which changed files to upload, checks them against HubSpot first, and records a scoped Git commit.
+- **Deploy** lets you pick which changed files to upload, checks them against HubSpot first, and records a scoped Git commit. Files you deleted locally can be deleted on HubSpot in the same deploy.
 
 **6. Come back later**
 
@@ -91,7 +91,7 @@ Open `hsdm` and choose **Fetch / update local**. It reports what changed in the 
 - Fetch operations use HubSpot's `--overwrite` option and are blocked when the selected account's local scope contains uncommitted changes.
 - An incomplete fetch is never committed automatically. Any partially written files remain uncommitted for inspection.
 - Deploy uploads only the files selected in the prompt and commits only successfully uploaded files.
-- Locally deleted files are reported but are not deleted remotely.
+- Locally deleted files are deleted on HubSpot only when you pick them and confirm: nothing is pre-selected, and the confirmation defaults to no. Deleting from the Design Manager is permanent.
 - Adding an account delegates authentication to the official `hs account auth` flow. This package does not collect credentials.
 
 Use a HubSpot sandbox or test account when validating a new workflow. `Watch` and `Deploy` write to the selected HubSpot account.
@@ -106,7 +106,8 @@ Nothing is requested until you ask for it: opening the menu makes no calls at al
 | --- | --- | --- |
 | Entering `Fetch / update local`, or starting a `Watch` | 2 (`hs api`, listing paths and modification times) | No |
 | Deploy, before uploading | 2 (the same listing), plus 1 download per selected file whose remote copy changed since your last sync | No |
-| Fetch, watch, deploy uploads | Whatever `hs cms fetch` / `watch` / `upload` need | Uploads only |
+| Deploy, before deleting | 2 (the same listing), plus 1 download per picked file whose remote copy changed since your last sync | No |
+| Fetch, watch, deploy uploads and deletions | Whatever `hs cms fetch` / `watch` / `upload` / `delete` need | Uploads and deletions only |
 | Lint, diff, deploy history | 0 | No |
 
 Entering `Fetch / update local` lists exactly what moved on HubSpot, with a per-path summary next to each saved path. Picking a path that drifted then asks how to update it: `Only what changed` downloads just that path's drifted assets, `Full re-download` fetches the whole path as before. Each saved path is treated on its own, so drift in one project never pulls another one down with it. The check is read-only and stays silent when it fails (for example when your access key lacks the required scopes) — it never claims your copy is current without knowing.
@@ -121,7 +122,7 @@ To skip every remote check — in CI, or with an access key that lacks the scope
 HSDM_NO_REMOTE_CHECK=1 hsdm
 ```
 
-Deploy then uploads without comparing against HubSpot, so edits made there are overwritten silently. It says so before uploading.
+Deploy then uploads and deletes without comparing against HubSpot, so edits made there are lost silently. It says so before doing either.
 
 ## Local files
 

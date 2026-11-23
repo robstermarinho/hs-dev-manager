@@ -102,6 +102,19 @@ describe("deployRow and alignRows", () => {
     expect(deployRow(record({ status: "partial" }), SCOPE).ok).toBe(false);
   });
 
+  it("shows what a deploy deleted on HubSpot", () => {
+    const mixed = deployRow(record({ deleted_files: [`${SCOPE}/theme/old.css`] }), SCOPE);
+    expect(mixed.files).toBe("1 file");
+    expect(mixed.summary).toBe("theme/modules/hero.module/module.html · 1 deleted");
+
+    const deleteOnly = deployRow(
+      record({ file_count: 0, files: [], deleted_files: [`${SCOPE}/theme/old.css`, `${SCOPE}/theme/older.css`] }),
+      SCOPE
+    );
+    expect(deleteOnly.files).toBe("2 deleted");
+    expect(deleteOnly.summary).toBe("theme/old.css +1 more");
+  });
+
   it("pads the age and count columns to a common width", () => {
     const rows = alignRows([
       { age: "2h ago", files: "1 file", summary: "a", ok: true },
